@@ -1,4 +1,3 @@
-// src/data/tutorPersonas.ts
 export interface TutorSlangItem {
   term: string;
   meaning: string;
