@@ -17,9 +17,6 @@ import {
   deleteDoc,
   updateDoc,
   onSnapshot,
-  query,
-  orderBy,
-  limit,
   serverTimestamp,
   increment
 } from 'firebase/firestore';
@@ -39,6 +36,14 @@ export const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// BLUEPRINT RULE 1: Strict Absolute Paths starting with artifacts/vera-worldwide-v1/...
+export const ROOT_ARTIFACT_PATH = 'artifacts/vera-worldwide-v1';
+export const USERS_COLLECTION_PATH = `${ROOT_ARTIFACT_PATH}/users`;
+export const CHAT_LOGS_COLLECTION_PATH = `${ROOT_ARTIFACT_PATH}/public/data/chat_logs`;
+export const CONFIG_COLLECTION_PATH = `${ROOT_ARTIFACT_PATH}/public/data/config`;
+export const PLATFORM_STATS_PATH = `${ROOT_ARTIFACT_PATH}/public/data/platform_stats`;
+export const ARCADE_SESSIONS_PATH = `${ROOT_ARTIFACT_PATH}/public/data/arcade_sessions`;
 
 const STORAGE_KEYS = {
   USERS: 'vera_users_cache',
@@ -63,13 +68,24 @@ export function isOwnerEmail(email?: string | null): boolean {
   return ADMIN_EMAILS.includes(email.toLowerCase().trim());
 }
 
+// BLUEPRINT RULE 3: Auth Guard — Ensure user is authenticated before any Firestore operation
+export async function ensureAuthenticatedUser(): Promise<FirebaseUser | null> {
+  if (auth.currentUser) return auth.currentUser;
+  try {
+    const cred = await signInAnonymously(auth);
+    return cred.user;
+  } catch (err) {
+    console.warn("Auth Guard offline fallback:", err);
+    return null;
+  }
+}
+
 export function getMaxEnergyForTier(tier?: SubscriptionTier, role?: UserRole): number {
   if (role === 'staff' || tier === 'premium' || tier === 'unlimited') return 999999;
   if (tier === 'plus') return 15;
   return 5;
 }
 
-// Automatically regenerate 1 Zap every 4 hours up to tier max
 export function applyEnergyRefill(profile: UserProfile): UserProfile {
   const maxEnergy = getMaxEnergyForTier(profile.subscription, profile.role);
   if (maxEnergy >= 999999) {
@@ -162,7 +178,7 @@ function getInitialLocalAnnouncement(): GlobalAnnouncement {
   }
 
   const def: GlobalAnnouncement = {
-    content: '🔥 New Drop Ahead: Moroccan Darija & Neapolitan dialects currently leading the global release poll! Cast your vote today.',
+    content: '🇲🇦 Moroccan Darija & 🇪🇬 Egyptian Masri are LIVE! Cast your ballot in the Global Dialect Poll for the next drop.',
     active: true,
     type: 'sale',
     updatedAt: Date.now()
@@ -202,11 +218,13 @@ export async function logChatToFirestore(chat: {
   }
 
   try {
-    const chatsRef = collection(db, 'chats');
-    await setDoc(doc(chatsRef, chatData.id), {
+    await ensureAuthenticatedUser();
+    const chatDocRef = doc(db, CHAT_LOGS_COLLECTION_PATH, chatData.id!);
+    await setDoc(chatDocRef, {
       userId: chatData.userId,
       userEmail: chatData.userEmail,
       timestamp: serverTimestamp(),
+      clientTimestamp: chatData.timestamp,
       message: chatData.message,
       response: chatData.response,
       language: chatData.language,
@@ -218,41 +236,48 @@ export async function logChatToFirestore(chat: {
   }
 }
 
+// BLUEPRINT RULE 2: No Complex Queries — Fetch entire collection and sort on the frontend
 export function subscribeToLiveChats(callback: (chats: ChatMessage[]) => void): () => void {
   callback(getInitialLocalChats());
   const handleCustomEvent = () => callback(getInitialLocalChats());
   window.addEventListener('vera_chat_logged', handleCustomEvent);
 
   let unsubscribeFirestore = () => {};
-  try {
-    const q = query(collection(db, 'chats'), orderBy('timestamp', 'desc'), limit(30));
-    unsubscribeFirestore = onSnapshot(
-      q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const remoteChats: ChatMessage[] = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data();
-            return {
-              id: docSnap.id,
-              userId: data.userId || 'anon',
-              userEmail: data.userEmail || 'learner@veraworldwide.com',
-              timestamp: data.timestamp?.toMillis ? data.timestamp.toMillis() : Date.now(),
-              message: data.message || '',
-              response: data.response || '',
-              language: data.language || 'Mexican Spanish',
-              fluencyScore: data.fluencyScore,
-              feedback: data.feedback
-            };
-          });
-          callback(remoteChats);
-          localStorage.setItem(STORAGE_KEYS.CHATS, JSON.stringify(remoteChats));
-        }
-      },
-      (err) => console.warn("Firestore live chat fallback:", err)
-    );
-  } catch (err) {
-    console.warn("Setup live chats error:", err);
-  }
+  ensureAuthenticatedUser().then((user) => {
+    if (!user) return;
+    try {
+      const chatsCol = collection(db, CHAT_LOGS_COLLECTION_PATH);
+      unsubscribeFirestore = onSnapshot(
+        chatsCol,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteChats: ChatMessage[] = snapshot.docs
+              .map((docSnap) => {
+                const data = docSnap.data();
+                return {
+                  id: docSnap.id,
+                  userId: data.userId || 'anon',
+                  userEmail: data.userEmail || 'learner@veraworldwide.com',
+                  timestamp: data.timestamp?.toMillis ? data.timestamp.toMillis() : (data.clientTimestamp || Date.now()),
+                  message: data.message || '',
+                  response: data.response || '',
+                  language: data.language || 'Moroccan Darija',
+                  fluencyScore: data.fluencyScore,
+                  feedback: data.feedback
+                };
+              })
+              .sort((a, b) => b.timestamp - a.timestamp)
+              .slice(0, 40);
+            callback(remoteChats);
+            localStorage.setItem(STORAGE_KEYS.CHATS, JSON.stringify(remoteChats));
+          }
+        },
+        (err) => console.warn("Firestore live chat fallback:", err)
+      );
+    } catch (err) {
+      console.warn("Setup live chats error:", err);
+    }
+  });
 
   return () => {
     window.removeEventListener('vera_chat_logged', handleCustomEvent);
@@ -266,36 +291,39 @@ export function subscribeToUsers(callback: (users: UserProfile[]) => void): () =
   window.addEventListener('vera_users_updated', handleCustomEvent);
 
   let unsubscribeFirestore = () => {};
-  try {
-    const usersRef = collection(db, 'users');
-    unsubscribeFirestore = onSnapshot(
-      usersRef,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const list: UserProfile[] = snapshot.docs.map((d) => {
-            const data = d.data();
-            return {
-              uid: d.id,
-              email: data.email || 'user@veraworldwide.com',
-              displayName: data.displayName || data.email?.split('@')[0],
-              role: (data.role as UserRole) || 'user',
-              subscription: (data.subscription as SubscriptionTier) || 'free',
-              sparks: data.sparks ?? 100,
-              energy: data.energy ?? getMaxEnergyForTier(data.subscription, data.role),
-              streak: data.streak ?? 1,
-              selectedDialect: data.selectedDialect || 'Mexican Spanish',
-              createdAt: data.createdAt || Date.now()
-            };
-          });
-          callback(list);
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(list));
-        }
-      },
-      (err) => console.warn("Firestore users sync fallback:", err)
-    );
-  } catch (err) {
-    console.warn("Setup users listener error:", err);
-  }
+  ensureAuthenticatedUser().then((user) => {
+    if (!user) return;
+    try {
+      const usersRef = collection(db, USERS_COLLECTION_PATH);
+      unsubscribeFirestore = onSnapshot(
+        usersRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const list: UserProfile[] = snapshot.docs.map((d) => {
+              const data = d.data();
+              return {
+                uid: d.id,
+                email: data.email || 'user@veraworldwide.com',
+                displayName: data.displayName || data.email?.split('@')[0],
+                role: (data.role as UserRole) || 'user',
+                subscription: (data.subscription as SubscriptionTier) || 'free',
+                sparks: data.sparks ?? 100,
+                energy: data.energy ?? getMaxEnergyForTier(data.subscription, data.role),
+                streak: data.streak ?? 1,
+                selectedDialect: data.selectedDialect || 'Moroccan Darija',
+                createdAt: data.createdAt || Date.now()
+              };
+            });
+            callback(list);
+            localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(list));
+          }
+        },
+        (err) => console.warn("Firestore users sync fallback:", err)
+      );
+    } catch (err) {
+      console.warn("Setup users listener error:", err);
+    }
+  });
 
   return () => {
     window.removeEventListener('vera_users_updated', handleCustomEvent);
@@ -313,7 +341,8 @@ export async function updateUserRole(uid: string, role: UserRole): Promise<void>
   window.dispatchEvent(new CustomEvent('vera_users_updated'));
 
   try {
-    const userRef = doc(db, 'users', uid);
+    await ensureAuthenticatedUser();
+    const userRef = doc(db, USERS_COLLECTION_PATH, uid);
     await updateDoc(userRef, { role });
   } catch (err) {
     console.warn("Firestore updateUserRole error:", err);
@@ -334,7 +363,8 @@ export async function updateUserSubscription(uid: string, subscription: Subscrip
   window.dispatchEvent(new CustomEvent('vera_users_updated'));
 
   try {
-    const userRef = doc(db, 'users', uid);
+    await ensureAuthenticatedUser();
+    const userRef = doc(db, USERS_COLLECTION_PATH, uid);
     await updateDoc(userRef, { subscription, energy: newMaxEnergy, maxEnergy: newMaxEnergy });
   } catch (err) {
     console.warn("Firestore updateUserSubscription error:", err);
@@ -347,38 +377,40 @@ export function subscribeToVotes(callback: (votes: Record<string, LanguageVote>)
   window.addEventListener('vera_votes_updated', handleCustomEvent);
 
   let unsubscribe = () => {};
-  try {
-    const votesRef = collection(db, 'votes');
-    unsubscribe = onSnapshot(
-      votesRef,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const map = getInitialLocalVotes();
-          snapshot.docs.forEach((docSnap) => {
-            const data = docSnap.data();
-            if (map[docSnap.id]) {
-              map[docSnap.id].count = data.count || map[docSnap.id].count;
-            } else {
-              map[docSnap.id] = {
-                languageId: docSnap.id,
-                languageName: data.languageName || 'Dialect',
-                dialect: data.dialect || docSnap.id,
-                flag: data.flag || '🌍',
-                region: data.region || 'Global',
-                count: data.count || 1,
-                description: data.description || ''
-              };
-            }
-          });
-          callback(map);
-          localStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(map));
-        }
-      },
-      (err) => console.warn("Votes snapshot fallback:", err)
-    );
-  } catch (err) {
-    console.warn("Setup votes sync error:", err);
-  }
+  ensureAuthenticatedUser().then(() => {
+    try {
+      const votesRef = collection(db, PLATFORM_STATS_PATH);
+      unsubscribe = onSnapshot(
+        votesRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const map = getInitialLocalVotes();
+            snapshot.docs.forEach((docSnap) => {
+              const data = docSnap.data();
+              if (map[docSnap.id]) {
+                map[docSnap.id].count = data.count ?? map[docSnap.id].count;
+              } else if (data.languageId) {
+                map[docSnap.id] = {
+                  languageId: docSnap.id,
+                  languageName: data.languageName || 'Dialect',
+                  dialect: data.dialect || docSnap.id,
+                  flag: data.flag || '🌍',
+                  region: data.region || 'Global',
+                  count: data.count || 1,
+                  description: data.description || ''
+                };
+              }
+            });
+            callback(map);
+            localStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(map));
+          }
+        },
+        (err) => console.warn("Votes snapshot fallback:", err)
+      );
+    } catch (err) {
+      console.warn("Setup votes sync error:", err);
+    }
+  });
 
   return () => {
     window.removeEventListener('vera_votes_updated', handleCustomEvent);
@@ -405,7 +437,8 @@ export async function castLanguageVote(languageId: string, weight: number = 1): 
   window.dispatchEvent(new CustomEvent('vera_votes_updated'));
 
   try {
-    const voteRef = doc(db, 'votes', languageId);
+    await ensureAuthenticatedUser();
+    const voteRef = doc(db, PLATFORM_STATS_PATH, languageId);
     await setDoc(voteRef, { languageId, count: increment(weight) }, { merge: true });
   } catch (err) {
     console.warn("Firestore vote increment error:", err);
@@ -419,28 +452,30 @@ export function subscribeToAnnouncement(callback: (announcement: GlobalAnnouncem
   window.addEventListener('vera_announcement_updated', handleCustomEvent);
 
   let unsubscribe = () => {};
-  try {
-    const annRef = doc(db, 'announcements', 'global');
-    unsubscribe = onSnapshot(
-      annRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const ann: GlobalAnnouncement = {
-            content: data.content || '',
-            active: data.active ?? true,
-            type: data.type || 'info',
-            updatedAt: data.updatedAt || Date.now()
-          };
-          callback(ann);
-          localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT, JSON.stringify(ann));
-        }
-      },
-      (err) => console.warn("Announcement sync fallback:", err)
-    );
-  } catch (err) {
-    console.warn("Setup announcement sync error:", err);
-  }
+  ensureAuthenticatedUser().then(() => {
+    try {
+      const annRef = doc(db, CONFIG_COLLECTION_PATH, 'global_announcement');
+      unsubscribe = onSnapshot(
+        annRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            const ann: GlobalAnnouncement = {
+              content: data.content || '',
+              active: data.active ?? true,
+              type: data.type || 'info',
+              updatedAt: data.updatedAt || Date.now()
+            };
+            callback(ann);
+            localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT, JSON.stringify(ann));
+          }
+        },
+        (err) => console.warn("Announcement sync fallback:", err)
+      );
+    } catch (err) {
+      console.warn("Setup announcement sync error:", err);
+    }
+  });
 
   return () => {
     window.removeEventListener('vera_announcement_updated', handleCustomEvent);
@@ -463,7 +498,8 @@ export async function updateAnnouncement(ann: {
   window.dispatchEvent(new CustomEvent('vera_announcement_updated'));
 
   try {
-    const annRef = doc(db, 'announcements', 'global');
+    await ensureAuthenticatedUser();
+    const annRef = doc(db, CONFIG_COLLECTION_PATH, 'global_announcement');
     await setDoc(annRef, {
       content: updated.content,
       active: updated.active,
@@ -494,7 +530,7 @@ export async function getOrCreateUserProfile(firebaseUser: FirebaseUser | null):
   const isOwner = isOwnerEmail(firebaseUser.email);
 
   try {
-    const userDocRef = doc(db, 'users', firebaseUser.uid);
+    const userDocRef = doc(db, USERS_COLLECTION_PATH, firebaseUser.uid);
     const snap = await getDoc(userDocRef);
     if (snap.exists()) {
       const data = snap.data();
@@ -513,7 +549,7 @@ export async function getOrCreateUserProfile(firebaseUser: FirebaseUser | null):
         maxEnergy,
         streak: data.streak ?? 1,
         cefrLevel: data.cefrLevel || 'A1',
-        selectedDialect: data.selectedDialect || 'Mexican Spanish',
+        selectedDialect: data.selectedDialect || 'Moroccan Darija',
         completedLessons: data.completedLessons || [],
         lastEnergyRefillAt: data.lastEnergyRefillAt || Date.now(),
         createdAt: data.createdAt || Date.now()
@@ -551,7 +587,7 @@ export async function getOrCreateUserProfile(firebaseUser: FirebaseUser | null):
     maxEnergy: isOwner ? 999999 : 5,
     streak: 1,
     cefrLevel: 'A1',
-    selectedDialect: 'Mexican Spanish',
+    selectedDialect: 'Moroccan Darija',
     completedLessons: [],
     lastEnergyRefillAt: Date.now(),
     createdAt: Date.now()
@@ -562,7 +598,7 @@ export async function getOrCreateUserProfile(firebaseUser: FirebaseUser | null):
   localStorage.setItem(STORAGE_KEYS.ACTIVE_USER, JSON.stringify(newProfile));
 
   try {
-    const userDocRef = doc(db, 'users', newProfile.uid);
+    const userDocRef = doc(db, USERS_COLLECTION_PATH, newProfile.uid);
     await setDoc(userDocRef, {
       ...newProfile,
       createdAt: serverTimestamp()
@@ -620,7 +656,7 @@ export async function signUpWithEmail(email: string, displayName: string): Promi
     maxEnergy: isOwner ? 999999 : 5,
     streak: 1,
     cefrLevel: 'A1',
-    selectedDialect: 'Mexican Spanish',
+    selectedDialect: 'Moroccan Darija',
     completedLessons: [],
     lastEnergyRefillAt: Date.now(),
     createdAt: Date.now()
@@ -632,7 +668,8 @@ export async function signUpWithEmail(email: string, displayName: string): Promi
   window.dispatchEvent(new CustomEvent('vera_auth_changed', { detail: newProfile }));
 
   try {
-    const userDocRef = doc(db, 'users', newProfile.uid);
+    await ensureAuthenticatedUser();
+    const userDocRef = doc(db, USERS_COLLECTION_PATH, newProfile.uid);
     await setDoc(userDocRef, { ...newProfile, createdAt: serverTimestamp() });
   } catch (e) {
     console.warn("Firestore write fallback:", e);
@@ -681,7 +718,7 @@ export function promoteToAdminWithPasscode(passcode: string, currentProfile?: Us
     maxEnergy: 999999,
     streak: Math.max(currentProfile?.streak || 1, 30),
     cefrLevel: currentProfile?.cefrLevel || 'B2',
-    selectedDialect: currentProfile?.selectedDialect || 'Mexican Spanish',
+    selectedDialect: currentProfile?.selectedDialect || 'Moroccan Darija',
     createdAt: currentProfile?.createdAt || Date.now()
   };
 
@@ -698,17 +735,19 @@ export function promoteToAdminWithPasscode(passcode: string, currentProfile?: Us
   localStorage.setItem(STORAGE_KEYS.ACTIVE_USER, JSON.stringify(staffProfile));
   window.dispatchEvent(new CustomEvent('vera_auth_changed', { detail: staffProfile }));
 
-  try {
-    const userDocRef = doc(db, 'users', staffProfile.uid);
-    setDoc(userDocRef, {
-      role: 'staff',
-      subscription: 'premium',
-      energy: 999999,
-      sparks: 99999
-    }, { merge: true });
-  } catch (err) {
-    console.warn("Firestore admin promotion sync:", err);
-  }
+  ensureAuthenticatedUser().then(() => {
+    try {
+      const userDocRef = doc(db, USERS_COLLECTION_PATH, staffProfile.uid);
+      setDoc(userDocRef, {
+        role: 'staff',
+        subscription: 'premium',
+        energy: 999999,
+        sparks: 99999
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Firestore admin promotion sync:", err);
+    }
+  });
 
   return staffProfile;
 }
@@ -729,7 +768,7 @@ export function loginAsDemo(type: 'learner' | 'staff'): UserProfile {
       maxEnergy: 999999,
       streak: 30,
       cefrLevel: 'B2',
-      selectedDialect: 'Mexican Spanish',
+      selectedDialect: 'Moroccan Darija',
       completedLessons: [],
       createdAt: Date.now()
     };
@@ -745,7 +784,7 @@ export function loginAsDemo(type: 'learner' | 'staff'): UserProfile {
       maxEnergy: 5,
       streak: 1,
       cefrLevel: 'A1',
-      selectedDialect: 'Mexican Spanish',
+      selectedDialect: 'Moroccan Darija',
       completedLessons: [],
       lastEnergyRefillAt: Date.now(),
       createdAt: Date.now()
@@ -780,7 +819,8 @@ export async function updateUserCompletedLessons(uid: string, lessonId: string):
       window.dispatchEvent(new CustomEvent('vera_users_updated'));
 
       try {
-        const userRef = doc(db, 'users', uid);
+        await ensureAuthenticatedUser();
+        const userRef = doc(db, USERS_COLLECTION_PATH, uid);
         await updateDoc(userRef, { completedLessons: updatedLessons });
       } catch (err) {
         console.warn("Firestore completed lessons fallback:", err);
@@ -802,7 +842,6 @@ export async function logOut(): Promise<void> {
   }
 }
 
-// App Store Guideline 5.1.1 Compliance: Full Account Deletion
 export async function deleteUserAccount(uid: string): Promise<void> {
   try {
     const users = getInitialLocalUsers().filter((u) => u.uid !== uid);
@@ -810,7 +849,8 @@ export async function deleteUserAccount(uid: string): Promise<void> {
     localStorage.removeItem(STORAGE_KEYS.ACTIVE_USER);
     window.dispatchEvent(new CustomEvent('vera_auth_changed', { detail: null }));
 
-    const userRef = doc(db, 'users', uid);
+    await ensureAuthenticatedUser();
+    const userRef = doc(db, USERS_COLLECTION_PATH, uid);
     await deleteDoc(userRef);
 
     if (auth.currentUser && auth.currentUser.uid === uid) {
@@ -827,7 +867,6 @@ export async function rewardUserSparksAndStreak(uid: string, baseSparksEarned: n
 
   if (idx !== -1) {
     const tier = users[idx].subscription;
-    // Enforce 2x Sparks multiplier for Plus & Premium/Unlimited tiers
     const multiplier = tier === 'plus' || tier === 'premium' || tier === 'unlimited' || users[idx].role === 'staff' ? 2 : 1;
     const finalSparks = baseSparksEarned * multiplier;
 
@@ -838,7 +877,8 @@ export async function rewardUserSparksAndStreak(uid: string, baseSparksEarned: n
     window.dispatchEvent(new CustomEvent('vera_users_updated'));
 
     try {
-      const userRef = doc(db, 'users', uid);
+      await ensureAuthenticatedUser();
+      const userRef = doc(db, USERS_COLLECTION_PATH, uid);
       await updateDoc(userRef, {
         sparks: increment(finalSparks),
         streak: increment(1)
@@ -862,7 +902,8 @@ export async function updateUserCefrLevel(uid: string, level: string): Promise<v
   }
 
   try {
-    const userRef = doc(db, 'users', uid);
+    await ensureAuthenticatedUser();
+    const userRef = doc(db, USERS_COLLECTION_PATH, uid);
     await updateDoc(userRef, { cefrLevel: level });
   } catch (err) {
     console.warn("Firestore CEFR level fallback:", err);
@@ -871,7 +912,8 @@ export async function updateUserCefrLevel(uid: string, level: string): Promise<v
 
 export async function submitSupportTicket(ticket: { userId: string; userEmail: string; message: string }): Promise<void> {
   try {
-    const ticketsRef = collection(db, 'support_tickets');
+    await ensureAuthenticatedUser();
+    const ticketsRef = collection(db, CONFIG_COLLECTION_PATH);
     await setDoc(doc(ticketsRef, 'ticket_' + Date.now()), {
       userId: ticket.userId,
       userEmail: ticket.userEmail,

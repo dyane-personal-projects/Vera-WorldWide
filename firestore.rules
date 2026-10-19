@@ -4,7 +4,7 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -12,8 +12,8 @@ service cloud.firestore {
     function isStaff() {
       return isSignedIn() && (
         request.auth.token.email == 'dyanecayer1821@gmail.com' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff')
+        (exists(/databases/$(database)/documents/artifacts/vera-worldwide-v1/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/artifacts/vera-worldwide-v1/users/$(request.auth.uid)).data.role == 'staff')
       );
     }
 
@@ -22,8 +22,8 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Users Collection: Users can read/update their own profile, but CANNOT self-promote to 'staff'
-    match /users/{userId} {
+    // Blueprint Rule 1: Strict Path /artifacts/vera-worldwide-v1/users/{userId}
+    match /artifacts/vera-worldwide-v1/users/{userId} {
       allow read: if isSignedIn();
       allow create: if isOwner(userId) && (
         request.resource.data.role == 'user' || request.auth.token.email == 'dyanecayer1821@gmail.com'
@@ -34,29 +34,25 @@ service cloud.firestore {
       allow delete: if isOwner(userId) || isStaff();
     }
 
-    // Chats Collection (Logged from the Vera Tutor)
-    match /chats/{chatId} {
+    // Blueprint Rule 1: Public Data Path /artifacts/vera-worldwide-v1/public/data/...
+    match /artifacts/vera-worldwide-v1/public/data/chat_logs/{chatId} {
       allow read: if isStaff() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn();
       allow update, delete: if isStaff();
     }
 
-    // Votes Collection
-    match /votes/{languageId} {
+    match /artifacts/vera-worldwide-v1/public/data/config/{docId} {
       allow read: if true;
       allow write: if isSignedIn();
     }
 
-    // Announcements Collection (Strictly Staff Only for Writes)
-    match /announcements/{announcementId} {
+    match /artifacts/vera-worldwide-v1/public/data/platform_stats/{docId} {
       allow read: if true;
-      allow write: if isStaff();
+      allow write: if isSignedIn();
     }
 
-    // Support Tickets Collection
-    match /support_tickets/{ticketId} {
-      allow create: if true;
-      allow read, update, delete: if isStaff();
+    match /artifacts/vera-worldwide-v1/public/data/arcade_sessions/{sessionId} {
+      allow read, write: if isSignedIn();
     }
   }
 }
