@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isStaff() {
+      return isSignedIn() && (
+        request.auth.token.email == 'dyanecayer1821@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff')
+      );
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users Collection: Users can read/update their own profile, but CANNOT self-promote to 'staff'
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && (
+        request.resource.data.role == 'user' || request.auth.token.email == 'dyanecayer1821@gmail.com'
+      );
+      allow update: if isStaff() || (
+        isOwner(userId) && request.resource.data.role == resource.data.role
+      );
+      allow delete: if isOwner(userId) || isStaff();
+    }
+
+    // Chats Collection (Logged from the Vera Tutor)
+    match /chats/{chatId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update, delete: if isStaff();
+    }
+
+    // Votes Collection
+    match /votes/{languageId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Announcements Collection (Strictly Staff Only for Writes)
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // Support Tickets Collection
+    match /support_tickets/{ticketId} {
+      allow create: if true;
+      allow read, update, delete: if isStaff();
+    }
+  }
+}

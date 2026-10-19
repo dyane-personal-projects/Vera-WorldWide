@@ -1,0 +1,6 @@
+{
+  "name": "Vera WorldWide",
+  "description": "Professional AI-powered language immersion platform featuring native dialect tracks, the adaptive Vera Tutor, community dialect voting, and real-time administrative telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

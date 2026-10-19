@@ -1,0 +1,220 @@
+import { DialectTrack } from '../types';
+
+export const DIALECT_TRACKS: DialectTrack[] = [
+  {
+    id: 'es-MX',
+    name: 'Spanish',
+    dialect: 'Mexican Spanish',
+    flag: '🇲🇽',
+    region: 'Mexico City & Central Mexico',
+    continent: 'North America',
+    status: 'active',
+    level: 'A1 - C1',
+    samplePhrase: '¿Qué onda, compa? ¿Vamos por unos tacos al pastor?',
+    translation: "What's up, buddy? Shall we grab some tacos al pastor?",
+    persona: 'Sofía (CDMX Street Guide)',
+    description: 'High-frequency street vernacular, colloquial fillers, and urban Mexican idioms.',
+    culturalNote: 'Master the polite diminutives (-ito) and ubiquitous slang terms like "chido", "onda", and "güey".'
+  },
+  {
+    id: 'fr-FR',
+    name: 'French',
+    dialect: 'Parisian French',
+    flag: '🇫🇷',
+    region: 'Paris & Île-de-France',
+    continent: 'Europe',
+    status: 'active',
+    level: 'A1 - B2',
+    samplePhrase: "C'est trop ouf ce resto, t'as vu le monde ?",
+    translation: "This restaurant is completely crazy, did you see the crowd?",
+    persona: 'Camille (Le Marais Local)',
+    description: 'Everyday casual Parisian slang, Verlan inversions, and natural liaison cadence.',
+    culturalNote: 'Focus on dropped negatives ("t\'es" instead of "tu n\'es pas") and cafe banter.'
+  },
+  {
+    id: 'ja-JP',
+    name: 'Japanese',
+    dialect: 'Tokyo Standard',
+    flag: '🇯🇵',
+    region: 'Tokyo Metro Area',
+    continent: 'Asia',
+    status: 'coming_soon',
+    level: 'N5 - N2',
+    samplePhrase: 'お疲れ様！この後、ちょっと一杯どう？',
+    translation: "Thanks for your hard work! How about a quick drink after this?",
+    persona: 'Kenji (Shibuya Tech Nomad)',
+    description: 'Nuanced honorific transitions, modern izakaya banter, and casual Tokyo rhythms.',
+    culturalNote: 'Understand Keigo contextual switches and natural sentence-ending particles.'
+  },
+  {
+    id: 'ar-EG',
+    name: 'Arabic',
+    dialect: 'Egyptian Masri',
+    flag: '🇪🇬',
+    region: 'Cairo & Nile Valley',
+    continent: 'Africa',
+    status: 'active',
+    level: 'Beginner - Advanced',
+    samplePhrase: 'إيه الأخبار يا صاحبي؟ عامل إيه في الدنيا؟',
+    translation: "What's the news my friend? How is life treating you?",
+    persona: 'Karim (Zamalek Culturalist)',
+    description: 'The lingua franca of Arab cinema, melodic cadence, and animated Cairene street humor.',
+    culturalNote: 'Pronounce the "jeem" as a hard "G" and master quick witty banter.'
+  },
+  {
+    id: 'es-CO',
+    name: 'Spanish',
+    dialect: 'Colombian Spanish',
+    flag: '🇨🇴',
+    region: 'Medellín & Antioquia',
+    continent: 'South America',
+    status: 'coming_soon',
+    level: 'A1 - C1',
+    samplePhrase: '¡Quiubo, parce! ¿Qué más pues, todo bien o qué?',
+    translation: "What's up, partner! How's everything going, all good?",
+    persona: 'Mateo (El Poblado Creative)',
+    description: 'Ultra-crisp pronunciation, melodic musicality, and warm Antioquian greetings.',
+    culturalNote: 'Embrace "vos" and "usted" respect forms alongside affectionate terms like "parce".'
+  },
+  {
+    id: 'ar-MA',
+    name: 'Arabic',
+    dialect: 'Moroccan Darija',
+    flag: '🇲🇦',
+    region: 'Casablanca & Rabat',
+    continent: 'Africa',
+    status: 'active',
+    level: 'Immersion Track',
+    samplePhrase: 'Labas 3lik? Kolchi bikhir, ash kat3awed?',
+    translation: "How are you? Everything fine, what are you up to?",
+    persona: 'Amine (Medina Artisan)',
+    description: 'A fascinating fusion of Arabic, Amazigh, French, and Spanish with fast clipped vowels.',
+    culturalNote: 'Unique number-letter transcription (3, 7, 9) and rapid conversational tempo.'
+  },
+  {
+    id: 'it-NAP',
+    name: 'Italian',
+    dialect: 'Neapolitan (Napulitano)',
+    flag: '🇮🇹',
+    region: 'Naples & Campania',
+    continent: 'Europe',
+    status: 'coming_soon',
+    level: 'Authentic Regional',
+    samplePhrase: 'Uè guagliò, stammo senza pensieri stasera!',
+    translation: "Hey kid, we're without worries tonight!",
+    persona: 'Gianluigi (Spaccanapoli Host)',
+    description: 'Expressive lyrical cadence, ancient Romance roots, and poetic Southern Italian warmth.',
+    culturalNote: 'Recognized by UNESCO as a distinct language with rich cultural traditions.'
+  },
+  {
+    id: 'pt-BR',
+    name: 'Portuguese',
+    dialect: 'Carioca Brazilian',
+    flag: '🇧🇷',
+    region: 'Rio de Janeiro',
+    continent: 'South America',
+    status: 'coming_soon',
+    level: 'Rhythm & Flow',
+    samplePhrase: 'Fala meu camarada, suave na nave? Partiu praia!',
+    translation: "Speak my comrade, smooth sailing? Off to the beach!",
+    persona: 'Lucas (Ipanema Musician)',
+    description: 'Open vowels, musical sibilant "s" sounds, and effortless beachside banter.',
+    culturalNote: 'Vibrant slang like "beleza", "demais", and melodic intonation.'
+  },
+  {
+    id: 'zh-HK',
+    name: 'Chinese',
+    dialect: 'Hong Kong Cantonese',
+    flag: '🇭🇰',
+    region: 'Hong Kong & Guangdong',
+    continent: 'Asia',
+    status: 'coming_soon',
+    level: 'High-Velocity Tonal',
+    samplePhrase: '今日得唔得閒飲茶呀？今晚約埋班FD出嚟啦！',
+    translation: "Are you free to have dim sum? Let's gather friends tonight!",
+    persona: 'Wing (Mong Kok Night Navigator)',
+    description: '9 distinct tones, rich colloquial idioms, and snappy fast-paced urban humor.',
+    culturalNote: 'Deep connection to culinary gatherings, street markets, and cinema heritage.'
+  },
+  {
+    id: 'ar-LEV',
+    name: 'Arabic',
+    dialect: 'Levantine (Lebanese/Syrian)',
+    flag: '🇱🇧',
+    region: 'Beirut & Damascus',
+    continent: 'Middle East',
+    status: 'coming_soon',
+    level: 'Conversational Fluency',
+    samplePhrase: 'Kifak ya 7abibi? Chu fi ma fi l-yom?',
+    translation: "How are you my dear? What's going on today?",
+    persona: 'Nour (Beirut Cafe Host)',
+    description: 'Soft, melodic glottal pronunciation, warm hospitality formulas, and regional charm.',
+    culturalNote: 'Famous throughout the Levant for musical intonation and multi-lingual code-switching.'
+  },
+  {
+    id: 'de-BAV',
+    name: 'German',
+    dialect: 'Bavarian (Boarisch)',
+    flag: '🇩🇪',
+    region: 'Munich & Alpine Bavaria',
+    continent: 'Europe',
+    status: 'coming_soon',
+    level: 'Alpine Heritage',
+    samplePhrase: 'Servus beinand! Gemma auf a gscheide Brotzeit?',
+    translation: "Greetings everyone! Shall we go for a proper Bavarian snack?",
+    persona: 'Florian (Alpine Guide)',
+    description: 'Distinct vowel shifts, rich Bavarian idioms, and cozy tavern ("Wirtshaus") culture.',
+    culturalNote: 'Strong regional pride with authentic expressions differing widely from High German.'
+  }
+];
+
+export const INITIAL_VOTES: Record<string, { count: number; name: string; dialect: string; flag: string; region: string; description: string }> = {
+  'ar-MA': {
+    count: 0,
+    name: 'Arabic',
+    dialect: 'Moroccan Darija',
+    flag: '🇲🇦',
+    region: 'Casablanca & Rabat',
+    description: 'High-energy fusion of Arabic, Amazigh, and French vocabulary with lightning tempo.'
+  },
+  'it-NAP': {
+    count: 0,
+    name: 'Italian',
+    dialect: 'Neapolitan (Napulitano)',
+    flag: '🇮🇹',
+    region: 'Naples & Campania',
+    description: 'UNESCO-recognized southern heritage language packed with passion and culinary culture.'
+  },
+  'pt-BR': {
+    count: 0,
+    name: 'Portuguese',
+    dialect: 'Carioca Brazilian',
+    flag: '🇧🇷',
+    region: 'Rio de Janeiro',
+    description: 'Musical rhythm, melodic intonation, and laid-back Rio beachside expressions.'
+  },
+  'zh-HK': {
+    count: 0,
+    name: 'Chinese',
+    dialect: 'Hong Kong Cantonese',
+    flag: '🇭🇰',
+    region: 'Hong Kong',
+    description: 'Dynamic 9-tone colloquial system beloved in global cinema and dim sum culture.'
+  },
+  'ar-LEV': {
+    count: 0,
+    name: 'Arabic',
+    dialect: 'Levantine (Lebanese)',
+    flag: '🇱🇧',
+    region: 'Beirut & Levant',
+    description: 'Renowned for warm, rhythmic greetings, poetic hospitality, and cross-cultural elegance.'
+  },
+  'de-BAV': {
+    count: 0,
+    name: 'German',
+    dialect: 'Bavarian (Boarisch)',
+    flag: '🇩🇪',
+    region: 'Munich & Alps',
+    description: 'Rich southern heritage dialect with hearty Alpine phrasing and distinct vowels.'
+  }
+};

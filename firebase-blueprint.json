@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered learner or staff member on the Vera WorldWide platform.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "role": { "type": "string", "enum": ["user", "staff"] },
+        "subscription": { "type": "string", "enum": ["free", "plus", "premium"] },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "sparks": { "type": "number" },
+        "streak": { "type": "number" },
+        "selectedDialect": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "subscription"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "Conversation log between user and Vera AI Tutor.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "userEmail": { "type": "string", "maxLength": 256 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "message": { "type": "string", "maxLength": 4000 },
+        "response": { "type": "string", "maxLength": 8000 },
+        "language": { "type": "string", "maxLength": 100 },
+        "fluencyScore": { "type": "number" },
+        "feedback": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["userId", "message", "response", "language"]
+    },
+    "Vote": {
+      "title": "Vote",
+      "description": "Ballot tallies for upcoming dialect drops.",
+      "type": "object",
+      "properties": {
+        "languageId": { "type": "string", "maxLength": 64 },
+        "count": { "type": "number" },
+        "languageName": { "type": "string", "maxLength": 100 },
+        "dialect": { "type": "string", "maxLength": 100 },
+        "flag": { "type": "string", "maxLength": 10 }
+      },
+      "required": ["languageId", "count"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Global notification or banner broadcast to all active users.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "maxLength": 1000 },
+        "active": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["info", "sale", "alert"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "active"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles, roles, and subscriptions."
+    },
+    "/chats/{chatId}": {
+      "schema": { "$ref": "#/entities/Chat" },
+      "description": "Recorded tutor interactions for telemetry and admin monitoring."
+    },
+    "/votes/{languageId}": {
+      "schema": { "$ref": "#/entities/Vote" },
+      "description": "Community ballot counts for forthcoming dialects."
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Global promotional or instructional banners."
+    }
+  }
+}
