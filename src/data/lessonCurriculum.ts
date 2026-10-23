@@ -6,7 +6,6 @@ export interface LessonExercise {
   audioLang?: string;
   options?: string[];
   correctAnswer: string | string[];
-  correctOptionText?: string;
   explanation: string;
   culturalTip: string;
   wordGlossary?: Record<string, string>;
@@ -27,7 +26,7 @@ function shuffleExerciseOptions(ex: LessonExercise): LessonExercise {
   return {
     ...ex,
     options: optionsCopy,
-    correctAnswer: correctText // We evaluate against correct string text rather than hardcoded array index 0
+    correctAnswer: correctText
   };
 }
 
@@ -57,20 +56,6 @@ export function getLessonExercises(lessonId: string, dialectId: string): LessonE
           correctAnswer: "Forget it, it's not happening tonight / call it off!",
           explanation: '"Laisse tomber" and "c\'est mort" are everyday conversational reflexes for "no chance / cancel it".',
           culturalTip: 'Speed in recognizing dropped negatives is crucial in fast Parisian conversation.'
-        },
-        {
-          id: 2,
-          type: 'roleplay',
-          prompt: 'A friend asks: "T\'es chaud pour bouger là ?" Answer instantly:',
-          options: [
-            "Grave, je prends mes affaires et j'arrive !",
-            "Ma température corporelle est élevée.",
-            "Je ne bouge jamais mes pieds.",
-            "Quel est le prix du billet de train ?"
-          ],
-          correctAnswer: "Grave, je prends mes affaires et j'arrive !",
-          explanation: '"T\'es chaud" means "Are you down / up for it?", and "Grave" is the ultimate energetic agreement.',
-          culturalTip: '"Grave" replaces "absolument" in youth and street French.'
         }
       ];
     } else if (isAr) {
@@ -78,18 +63,18 @@ export function getLessonExercises(lessonId: string, dialectId: string): LessonE
         {
           id: 1,
           type: 'listening',
-          prompt: 'RAPID FIRE: Instant street greeting in Cairo:',
-          nativePhrase: 'ازيك يا باشا؟ عامل إيه؟',
-          audioLang: 'ar-EG',
+          prompt: 'RAPID FIRE: Instant street greeting:',
+          nativePhrase: 'سلام! لباس عليك؟',
+          audioLang: 'ar-MA',
           options: [
-            'Hey boss! How are you doing? Everything good?',
-            'Where is the ticket office for the pyramids?',
-            'What is the currency exchange rate today?',
-            'Can you open the car door please?'
+            'Hello! How are you doing?',
+            'Where is the airport terminal?',
+            'What is the currency exchange rate?',
+            'Can you open the car door?'
           ],
-          correctAnswer: 'Hey boss! How are you doing? Everything good?',
-          explanation: '"Ya basha" and "3amel eh" are the gold standard for friendly Cairene street greetings.',
-          culturalTip: 'Using "باشا" (basha) conveys warm respect and street familiarity.'
+          correctAnswer: 'Hello! How are you doing?',
+          explanation: '"Labas 3lik" is the gold standard for friendly greeting.',
+          culturalTip: 'Warm familiarity builds immediate trust.'
         }
       ];
     } else {
@@ -113,7 +98,6 @@ export function getLessonExercises(lessonId: string, dialectId: string): LessonE
       ];
     }
   } else {
-    // Default curriculum exercises for L1 through L7
     exercises = [
       {
         id: 1,
