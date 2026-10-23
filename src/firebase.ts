@@ -925,3 +925,18 @@ export async function submitSupportTicket(ticket: { userId: string; userEmail: s
     console.warn("Firestore support ticket fallback:", err);
   }
 }
+
+// Admin function to completely delete any user profile from local cache and Firestore
+export async function deleteUserByAdmin(uid: string): Promise<void> {
+  try {
+    const users = getInitialLocalUsers().filter((u) => u.uid !== uid);
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    window.dispatchEvent(new CustomEvent('vera_users_updated'));
+
+    await ensureAuthenticatedUser();
+    const userRef = doc(db, USERS_COLLECTION_PATH, uid);
+    await deleteDoc(userRef);
+  } catch (err) {
+    console.warn("Admin delete user error:", err);
+  }
+}
