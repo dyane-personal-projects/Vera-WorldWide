@@ -65,29 +65,28 @@ export async function generateTutorReply(params: {
       : 'Personal AI Shadow Memory: First session — observe any pronunciation, word order, or register slips.';
 
   const levelPedagogyMap = {
-    A1: 'CEFR Level A1 (Absolute Beginner): Keep your reply to 1-2 SHORT, simple sentences using basic everyday words. Offer adaptive hints. Set recommendedSpeechRate to 0.85.',
-    A2: 'CEFR Level A2 (Elementary): Use simple daily conversational sentences. Introduce 1 practical street phrase. Set recommendedSpeechRate to 0.92.',
-    B1: 'CEFR Level B1 (Intermediate): Maintain natural conversational rhythm. Introduce 1 authentic regional street slang or idiom. Set recommendedSpeechRate to 1.0.',
-    B2: 'CEFR Level B2 (Upper Intermediate): Converse with authentic native cadence, local cultural humor, and dialectal contractions. Set recommendedSpeechRate to 1.05.',
-    C1: 'CEFR Level C1 (Mastery): Speak at full local street speed with deep colloquial nuances, rapid slang, and minimal English hand-holding. Set recommendedSpeechRate to 1.1.'
+    A1: 'CEFR Level A1 (Absolute Beginner): Keep your reply to 1-2 SHORT, warm sentences using basic everyday words. Talk like a friendly human sitting across a café table.',
+    A2: 'CEFR Level A2 (Elementary): Use simple daily conversational sentences with natural pauses.',
+    B1: 'CEFR Level B1 (Intermediate): Maintain natural conversational rhythm with authentic street slang.',
+    B2: 'CEFR Level B2 (Upper Intermediate): Converse with authentic native cadence, local cultural humor, and contractions.',
+    C1: 'CEFR Level C1 (Mastery): Speak at full local street speed with deep colloquial nuances and zero English.'
   };
 
   const levelDirective = levelPedagogyMap[level] || levelPedagogyMap.A1;
 
-  const systemInstruction = `You are a warm, genuine, personal native immersion tutor for "${dialectName}" on Vera WorldWide.
+  const systemInstruction = `You are a warm, genuine, living human native immersion speaker for "${dialectName}" on Vera WorldWide.
 Your active persona: ${persona}.
 Regional Cultural Focus: ${culturalNote || 'Authentic colloquial phrasing, rhythm, street idioms, and cultural etiquette'}.
 Student Proficiency Level: ${levelDirective}
 ${shadowContext}
 
-CRITICAL SCRIPT & LANGUAGE DIRECTIVES:
-1. Your "reply" field MUST be written 100% in the authentic native script of ${dialectName} (e.g., Arabic script for Moroccan Darija / Egyptian Masri, Japanese Kanji/Kana for Japanese, Spanish for Mexican/Colombian, French for Parisian, Portuguese for Carioca). NEVER put English or Latin transliteration inside the "reply" field because the neural voice engine reads "reply" aloud!
-2. Provide a clean, accurate English translation in "englishTranslation".
-3. Provide constructive feedback (1 sentence) in English in "feedback".
-4. Provide a "rephraseSuggestion" in the target dialect showing how a true local would say the user's thought effortlessly.
-5. Identify a "shadowTargetGap" (1 short note on grammar/vocabulary to remember for next turn).
-6. Provide a "slangTip" with an authentic regional word and its "slangMeaning".
-7. Provide "suggestedReplies": an array of 3 realistic reply options in ${dialectName} (native script) matching level ${level}.
+CRITICAL HUMAN IMMERSION DIRECTIVES:
+1. Speak as a real, breathing human being from ${dialectName}'s region. Use natural conversational warm-ups, friendly laughs, or spontaneous local reactions (e.g., "Ah ya salaam!", "¡Órale!", "Ah ouais !").
+2. Your "reply" field MUST be written 100% in the authentic native script of ${dialectName}. NEVER put English or transliteration inside "reply".
+3. Provide a clean English translation in "englishTranslation".
+4. Provide constructive feedback in "feedback".
+5. Provide a "rephraseSuggestion" showing how a local would say it.
+6. Provide "suggestedReplies": an array of 3 realistic reply options in ${dialectName} (native script).
 
 Format your response strictly as a JSON object:
 {
@@ -120,7 +119,7 @@ Format your response strictly as a JSON object:
         contents: formattedHistory,
         config: {
           systemInstruction,
-          temperature: 0.75,
+          temperature: 0.82, // Slightly higher temperature for organic human variation
           responseMimeType: 'application/json'
         }
       });
@@ -177,12 +176,6 @@ export async function generateAnnouncementCopy(topicPrompt: string): Promise<str
       console.warn("Gemini announcement copy error:", err);
     }
   }
-  if (topicPrompt.toLowerCase().includes('sale') || topicPrompt.toLowerCase().includes('off') || topicPrompt.toLowerCase().includes('discount')) {
-    return '⚡ Flash Immersion Pass: Unlock All Dialects & Boss Arenas at 40% Off This Week!';
-  }
-  if (topicPrompt.toLowerCase().includes('darija') || topicPrompt.toLowerCase().includes('moroc')) {
-    return '🇲🇦 Moroccan Darija is LIVE! Practice Casablanca & Rabat street fluency with Badr today.';
-  }
   return `🌍 Vera WorldWide: ${topicPrompt} — Experience high-velocity street dialect fluency today!`;
 }
 
@@ -209,151 +202,46 @@ function getFallbackSuggestions(dialectName: string): string[] {
 }
 
 export function getContextualDialectFallback(dialectName: string, message: string, level: string = 'A1'): TutorResponse {
-  const lower = message.toLowerCase();
-  const lvl = level.toUpperCase();
-  const isA1 = lvl === 'A1';
-
   if (dialectName.includes('Moroccan') || dialectName.includes('Darija')) {
-    if (isA1) {
-      return {
-        reply: 'السلام أ خويا! لباس عليك؟ كلشي بخير؟ أنا بدر من الدار البيضاء. يلاه نتعلمو الدارجة دقة دقة بلا تعقيد!',
-        englishTranslation: 'Peace my brother! How are you? Everything good? I am Badr from Casablanca. Let us learn Darija step-by-step without complication!',
-        feedback: 'بداية واعرة! كلمة "لباس" (Labas) هي الساروت ديال أي هضرة في المغرب.',
-        rephraseSuggestion: 'قول: "لباس الحمد لله، كلشي بخير أ خويا بدر!"',
-        fluencyScore: 96,
-        recommendedSpeechRate: 0.9,
-        slangTip: 'دقة دقة (Daqqa daqqa)',
-        slangMeaning: 'Step by step / little by little — quintessential Moroccan expression.',
-        suggestedReplies: ['لباس الحمد لله، كلشي بخير!', 'بغيت نتعلم كيفاش نطلب أتاي', 'علمني كلمات ديال كازا عافاك']
-      };
-    }
     return {
-      reply: 'واش أ عشيري! الهضرة ديالك زوينة بزاف وغادية مع الموجة ديال كازا والرباط. يلاه نطلبو براد ديال أتاي مشحر ولا نفاصلو في المدينة القديمة؟',
-      englishTranslation: "What's up my friend! Your phrasing is super nice and matches the Casablanca and Rabat wave. Shall we order a pot of Moroccan mint tea or haggle in the Old Medina?",
-      feedback: 'إيقاع مغربي أصيل! استعمالك للكلمات خفيف وطبيعي.',
-      rephraseSuggestion: 'في الزنقة كنقولو: "صافي مشينا أ خويا، الفكرة واعرة!"',
-      fluencyScore: 94,
-      recommendedSpeechRate: 1.0,
-      slangTip: 'واعر / زوين (Wa3er / Zwin)',
-      slangMeaning: 'Awesome, tough/cool (Wa3er) and nice/beautiful (Zwin) in everyday Moroccan Darija.',
-      suggestedReplies: ['واحد أتاي مشحر بالنعناع عافاك!', 'شحال الثمن النهائي أ المعلم؟', 'صافي مشينا أ خويا، الفكرة واعرة!']
-    };
-  }
-
-  if (dialectName.includes('Arabic') || dialectName.includes('Egyptian') || dialectName.includes('Masri')) {
-    const isFood = lower.includes('اكل') || lower.includes('أكل') || lower.includes('كشري') || lower.includes('شاي') || lower.includes('قهوة') || lower.includes('food');
-    if (isFood) {
-      return {
-        reply: 'الله عليك! أنت ذوقك عالي في الأكل. في القاهرة لما تطلب كشري قول: علبة كشري كمالة وزود دقة وشطة، وعلى القهوة اطلب شاي في الخمسينة سكر مظبوط!',
-        englishTranslation: "Spot on! You have great taste in food. In Cairo, when you eat koshari, tell the server: 'A mixed koshari box with extra daqqa and shatta', and at the café ask for 'tea in the khamseenah, medium sugar'!",
-        feedback: 'اختيار ممتاز للكلمات الخاصة بالأكل الشعبي المصري.',
-        rephraseSuggestion: 'استخدم "لو سمحت يا ريس" لما تطلب من الجرسون.',
-        fluencyScore: 95,
-        recommendedSpeechRate: 0.95,
-        slangTip: 'شاي في الخمسينة (Shay fel-5amseenah)',
-        slangMeaning: 'Strong Egyptian black tea served in a traditional small glass tumbler at street cafes.',
-        suggestedReplies: ['واحد شاي في الخمسينة بالنعناع يا ريس!', 'الحساب كام لو سمحت يا باشا؟', 'الدقة والشطة هما روح الكشري!']
-      };
-    }
-    return {
-      reply: 'أهلاً يا باشا! مساء الفل والياسمين. كلامك زي السكر وإيقاعك ماشي مع شارع القاهرة بالملي! تحب نطلب شاي في الخمسينة على القهوة ولا نفاصل في خان الخليلي؟',
-      englishTranslation: 'Welcome boss! An evening of jasmine and flowers to you. Your words are sweet as sugar and your cadence matches Cairo street rhythm! Shall we order tea at the ahwa or haggle in Khan el-Khalili?',
-      feedback: 'تحية مصرية أصيلة ودافية جداً!',
-      rephraseSuggestion: 'في الشارع بنرد نقول: "حبيبي يا باشا، ده نورك!"',
+      reply: 'السلام أ خويا! لباس عليك؟ كلشي بخير؟ أنا بدر من الدار البيضاء. يلاه نتعلمو الدارجة دقة دقة!',
+      englishTranslation: 'Peace my brother! How are you? Everything good? I am Badr from Casablanca. Let us learn Darija step by step!',
+      feedback: 'بداية واعرة! الإيقاع المغربي ديالك كيصبر.',
+      rephraseSuggestion: 'قول: "لباس الحمد لله، كلشي مزيان!"',
       fluencyScore: 95,
       recommendedSpeechRate: 0.95,
-      slangTip: 'مساء الفل (Masa2 el-fol)',
-      slangMeaning: 'Iconic Cairo poetic greeting expressing warm welcome, respect, and street hospitality.',
-      suggestedReplies: ['حبيبي يا باشا ده نورك!', 'واحد شاي في الخمسينة بالنعناع يا ريس', 'يلا نفاصل في خان الخليلي!']
+      slangTip: 'دقة دقة (Daqqa daqqa)',
+      slangMeaning: 'Step by step / little by little.',
+      suggestedReplies: ['لباس الحمد لله، كلشي مزيان!', 'بغيت أتاي بالنعناع عافاك', 'فين غادي نمسيو اليوم؟']
     };
   }
-
-  if (dialectName.includes('Mexican')) {
-    if (isA1) {
-      return {
-        reply: '¡Hola! Mucho gusto, soy Sofía de la Ciudad de México. Vamos con calma, palabra por palabra. ¿Cómo estás hoy?',
-        englishTranslation: 'Hello! Nice to meet you, I am Sofia from Mexico City. We will go calmly, word by word. How are you today?',
-        feedback: '¡Excelente inicio! Para responder puedes decir: "Muy bien, gracias".',
-        rephraseSuggestion: '"¡Hola Sofía, cómo estás?" es un saludo perfecto y natural.',
-        fluencyScore: 97,
-        recommendedSpeechRate: 0.9,
-        slangTip: 'Mucho gusto',
-        slangMeaning: 'Standard polite Spanish for "Pleased to meet you".',
-        suggestedReplies: ['Muy bien Sofía, gracias', 'Mucho gusto en conocerte', 'Quiero aprender palabras fáciles hoy']
-      };
-    }
-    return {
-      reply: '¡Órale, qué bien suena eso compa! Me late un buen tu vibra. Si quieres pedir algo en la taquería, acuérdate de decir siempre: "¿Me das dos de pastor con todo, por favor?"',
-      englishTranslation: 'Wow, that sounds great buddy! I really like your vibe. If you want to order at a taco stand, remember to say: "Could I get two pastor tacos with everything, please?"',
-      feedback: 'Buena estructura de oración y vocabulario adecuado para la CDMX.',
-      rephraseSuggestion: '"Me late un buen" es la forma más espontánea de decir que algo te agrada.',
-      fluencyScore: 93,
-      recommendedSpeechRate: 1.0,
-      slangTip: 'Con todo',
-      slangMeaning: 'At a taco stand, ordering "con todo" automatically includes cilantro, onions, and roasted pineapple.',
-      suggestedReplies: ['¿Y la salsa verde pica mucho?', '¿Cuánto es de la cuenta marchante?', '¡Están buenísimos jefe, gracias!']
-    };
-  }
-
-  if (dialectName.includes('French') || dialectName.includes('Paris')) {
-    return {
-      reply: "Salut ! Franchement, t'as une super cadence. À Paris, au comptoir d'un café, on dit souvent : Un café serré s'il vous plaît !",
-      englishTranslation: "Hey! Honestly, your conversational rhythm is great. In Paris at a café counter, locals often say: 'A short espresso please!'",
-      feedback: 'Très bonne fluidité et tournure de phrase très naturelle.',
-      rephraseSuggestion: "Tu peux enlever le « ne » à l'oral : « J'sais pas » au lieu de « Je ne sais pas ».",
-      fluencyScore: 92,
-      recommendedSpeechRate: 1.0,
-      slangTip: "C'est ouf",
-      slangMeaning: 'Verlan inversion of "fou" (crazy). Used constantly by all generations in Paris.',
-      suggestedReplies: ['On se prend un petit café en terrasse ?', "C'est quoi ton quartier préféré à Paris ?", "Laisse tomber, c'est trop stylé !"]
-    };
-  }
-
-  if (dialectName.includes('Japanese') || dialectName.includes('Tokyo')) {
-    return {
-      reply: 'お疲れ様！日本語のイントネーションがすごく自然だね。東京の居酒屋では「とりあえず生で！」って頼むと一瞬でローカルっぽくなるよ！',
-      englishTranslation: "Great work! Your Japanese intonation is very natural. At a Tokyo izakaya, ordering 'Toriaezu nama de!' (draft beer to start!) makes you sound like an instant local!",
-      feedback: '自然な相槌とリズムがバッチリです！',
-      rephraseSuggestion: '友達同士なら「めっちゃいいじゃん！」と返すと自然です。',
-      fluencyScore: 95,
-      recommendedSpeechRate: 1.0,
-      slangTip: 'それな (Sore na!)',
-      slangMeaning: 'Ubiquitous Tokyo street agreement particle meaning "Preach / Exactly / Couldn\'t agree more".',
-      suggestedReplies: ['とりあえず生二つお願いします！', '渋谷でおすすめのラーメン屋ある？', 'それな！めっちゃわかるよ']
-    };
-  }
-
-  if (dialectName.includes('Portuguese') || dialectName.includes('Carioca') || dialectName.includes('Brazil')) {
-    return {
-      reply: 'E aí meu irmão, tranquilidade? Que vibe boa! Aqui no Rio a gente costuma pedir: Manda uma água de coco bem gelada aí, chefe!',
-      englishTranslation: "What's up my brother, everything chill? What a great vibe! Here in Rio we usually ask: 'Send an ice-cold coconut water my way, boss!'",
-      feedback: 'Excelente calor humano na mensagem! A informalidade carioca soa genuína.',
-      rephraseSuggestion: 'Chamar o atendente de "chefe" ou "meu parceiro" gera conexão instantânea.',
-      fluencyScore: 93,
-      recommendedSpeechRate: 1.0,
-      slangTip: 'Maneiro',
-      slangMeaning: 'The definitive Rio de Janeiro slang word for cool, nice, or pleasant.',
-      suggestedReplies: ['Bora dar um mergulho em Copacabana?', 'Onde tem aquela roda de samba boa hoje?', 'Tudo sussa meu parceiro, só na paz!']
-    };
-  }
-
   return {
-    reply: '¡Quiubo pues mi parce! Qué berraquera hablar contigo. Si vas por Medellín, no olvides saludar con un buen "¿Bien o qué, hombre?"',
-    englishTranslation: "What's up my buddy! How awesome to chat with you. If you go through Medellín, don't forget to greet people with 'Good or what, man?'",
-    feedback: 'El ritmo musical de tu frase capta muy bien la calidez colombiana.',
-    rephraseSuggestion: 'Usa "parce" o "parcero" con confianza para referirte a compas o amigos.',
-    fluencyScore: 92,
+    reply: '¡Órale compa! Qué gusto saludarte. ¿De qué te gustaría platicar hoy? ¿De comida, música o historias de la ciudad?',
+    englishTranslation: 'What up buddy! So great to greet you. What would you like to chat about today? Food, music, or city stories?',
+    feedback: 'Excelente tono y ritmo conversacional.',
+    rephraseSuggestion: 'Prueba diciendo: "Todo al cien, listos para platicar."',
+    fluencyScore: 94,
     recommendedSpeechRate: 1.0,
-    slangTip: 'Berraquera',
-    slangMeaning: 'Iconic Colombian expression for something incredible, brave, or outstanding.',
-    suggestedReplies: ['¡Qué chimba de ciudad es Medellín!', '¿Dónde consigo una bandeja paisa de verdad?', 'Todo bien mi parce, con toda la actitud']
+    slangTip: 'Órale',
+    slangMeaning: 'Expresses surprise, agreement, or encouragement.',
+    suggestedReplies: ['¡Platícame de los mejores tacos!', '¿Cómo me muevo en el metro?', 'Todo bien por acá']
   };
+}
+
+// ============================================================================
+// DYNAMIC STUDIO VOICE ROTATION (ROTATES BETWEEN PUCK, KORE, CHARON, FENRIR, ZEPHYR)
+// ============================================================================
+
+const STUDIO_VOICES: StudioVoiceName[] = ['Puck', 'Kore', 'Charon', 'Fenrir', 'Zephyr'];
+
+function getRandomStudioVoice(): StudioVoiceName {
+  // Rotate randomly so every message sounds like a different real person from the country!
+  const idx = Math.floor(Math.random() * STUDIO_VOICES.length);
+  return STUDIO_VOICES[idx];
 }
 
 const audioCache = new Map<string, string>();
 let currentActiveAudio: HTMLAudioElement | null = null;
-
-export type StudioVoiceName = 'Puck' | 'Kore' | 'Charon' | 'Fenrir' | 'Zephyr';
 
 export function cleanTextForSpeech(rawText: string): string {
   if (!rawText) return '';
@@ -409,7 +297,7 @@ export async function generateNativeSpeechAudio(params: {
   dialectId?: string;
   voiceName?: StudioVoiceName;
 }): Promise<string | null> {
-  const { text, dialectId = 'es-MX', voiceName = 'Puck' } = params;
+  const { text, dialectId = 'es-MX', voiceName = getRandomStudioVoice() } = params;
   const clean = cleanTextForSpeech(text);
   if (!clean) return null;
 
@@ -422,19 +310,19 @@ export async function generateNativeSpeechAudio(params: {
 
   let stylePrompt = clean;
   if (dialectId === 'ar-MA') {
-    stylePrompt = `Speak in an authentic, warm Moroccan Darija accent: ${clean}`;
+    stylePrompt = `Speak as a native Moroccan from Casablanca with high emotional warmth and natural street pauses: ${clean}`;
   } else if (dialectId.startsWith('ar')) {
-    stylePrompt = `Speak in a warm, natural Egyptian Cairene Arabic accent: ${clean}`;
+    stylePrompt = `Speak as a native Cairene Egyptian with friendly warmth and natural conversational rhythm: ${clean}`;
   } else if (dialectId === 'es-MX') {
-    stylePrompt = `Speak in a natural, warm Mexico City Spanish accent: ${clean}`;
+    stylePrompt = `Speak as a friendly native Mexico City local with vibrant expression: ${clean}`;
   } else if (dialectId === 'es-CO') {
-    stylePrompt = `Speak in a warm Medellín Colombian Spanish accent: ${clean}`;
+    stylePrompt = `Speak as a warm native Colombian from Medellín with melodic cadence: ${clean}`;
   } else if (dialectId.startsWith('fr')) {
-    stylePrompt = `Speak in a natural Parisian French accent: ${clean}`;
+    stylePrompt = `Speak as a native Parisian with smooth, organic conversational cadence: ${clean}`;
   } else if (dialectId.startsWith('ja')) {
-    stylePrompt = `Speak in a natural Tokyo Japanese accent: ${clean}`;
+    stylePrompt = `Speak as a friendly native Tokyo local with natural pitch accent and warmth: ${clean}`;
   } else if (dialectId.startsWith('pt')) {
-    stylePrompt = `Speak in a warm Rio de Janeiro Brazilian Portuguese accent: ${clean}`;
+    stylePrompt = `Speak as a warm native Carioca from Rio de Janeiro with relaxed musical flow: ${clean}`;
   }
 
   try {
@@ -480,9 +368,7 @@ export function stopAllAudio(): void {
 
 function findBestNativeVoice(dialectId: string, voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   if (!voices || voices.length === 0) return null;
-
   const prefix = dialectId.split('-')[0].toLowerCase();
-
   const exactMatch =
     voices.find(
       (v) =>
@@ -490,23 +376,6 @@ function findBestNativeVoice(dialectId: string, voices: SpeechSynthesisVoice[]):
         (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Premium'))
     ) || voices.find((v) => v.lang.toLowerCase().replace('_', '-') === dialectId.toLowerCase());
   if (exactMatch) return exactMatch;
-
-  const familyPremium = voices.find(
-    (v) =>
-      v.lang.toLowerCase().startsWith(prefix) &&
-      (v.name.toLowerCase().includes('natural') ||
-        v.name.toLowerCase().includes('google') ||
-        v.name.toLowerCase().includes('siri') ||
-        v.name.toLowerCase().includes('maged') ||
-        v.name.toLowerCase().includes('tarik') ||
-        v.name.toLowerCase().includes('laila') ||
-        v.name.toLowerCase().includes('paulina') ||
-        v.name.toLowerCase().includes('amelie') ||
-        v.name.toLowerCase().includes('thomas') ||
-        v.name.toLowerCase().includes('kyoko') ||
-        v.name.toLowerCase().includes('luciana'))
-  );
-  if (familyPremium) return familyPremium;
 
   return voices.find((v) => v.lang.toLowerCase().startsWith(prefix)) || null;
 }
@@ -520,7 +389,7 @@ export async function playNativeAudio(params: {
   onEnd?: () => void;
   onError?: (err: any) => void;
 }): Promise<void> {
-  const { text, dialectId = 'es-MX', voiceName = 'Puck', rate = 1.0, onStart, onEnd, onError } = params;
+  const { text, dialectId = 'es-MX', voiceName = getRandomStudioVoice(), rate = 1.0, onStart, onEnd, onError } = params;
   const clean = cleanTextForSpeech(text);
   if (!clean) {
     onEnd?.();
@@ -535,7 +404,9 @@ export async function playNativeAudio(params: {
     if (dataUri) {
       const audio = new Audio(dataUri);
       currentActiveAudio = audio;
-      audio.playbackRate = rate;
+      // Add subtle random human speed variation (0.95 to 1.05) so every playback feels organic!
+      const humanRateVariation = Math.max(0.85, Math.min(rate * (0.96 + Math.random() * 0.08), 1.15));
+      audio.playbackRate = humanRateVariation;
       audio.onended = () => {
         currentActiveAudio = null;
         onEnd?.();
@@ -590,7 +461,7 @@ function fallbackNativeTTS(
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.voice = matchedVoice;
       utterance.lang = matchedVoice.lang || targetLang;
-      utterance.rate = Math.max(0.75, Math.min(rate, 1.15));
+      utterance.rate = Math.max(0.8, Math.min(rate, 1.1));
       utterance.onend = () => onEnd?.();
       utterance.onerror = (e) => {
         onError?.(e);
@@ -604,7 +475,7 @@ function fallbackNativeTTS(
     const streamUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(tl)}&q=${encodeURIComponent(cleanText.slice(0, 200))}`;
     const audio = new Audio(streamUrl);
     currentActiveAudio = audio;
-    audio.playbackRate = Math.max(0.75, Math.min(rate, 1.15));
+    audio.playbackRate = Math.max(0.85, Math.min(rate, 1.1));
     audio.onended = () => {
       currentActiveAudio = null;
       onEnd?.();
