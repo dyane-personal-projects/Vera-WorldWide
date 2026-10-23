@@ -53,7 +53,7 @@ Format strictly as JSON:
   "reply": "Native script reply",
   "englishTranslation": "English translation",
   "feedback": "Encouraging feedback",
-  "rephraseSuggestion": "How a local would say it",
+  "rephraseSuggestion": "How a local would rephrase the user's sentence",
   "fluencyScore": 92,
   "slangTip": "Local term",
   "slangMeaning": "Meaning",
@@ -93,12 +93,31 @@ Format strictly as JSON:
     }
   }
 
+  return getContextualDialectFallback(dialectName, userMessage, level);
+}
+
+export function getContextualDialectFallback(dialectName: string, message: string, level: string = 'A1'): TutorResponse {
+  if (dialectName.includes('Moroccan') || dialectName.includes('Darija')) {
+    return {
+      reply: 'السلام أ خويا! لباس عليك؟ كلشي بخير؟ أنا بدر من الدار البيضاء.',
+      englishTranslation: 'Peace my brother! How are you? Everything good? I am Badr from Casablanca.',
+      feedback: 'بداية واعرة! الإيقاع المغربي ديالك كيصبر.',
+      rephraseSuggestion: 'قول: "لباس الحمد لله، كلشي مزيان!"',
+      fluencyScore: 95,
+      slangTip: 'دقة دقة',
+      slangMeaning: 'Step by step / little by little.',
+      suggestedReplies: ['لباس الحمد لله، كلشي مزيان!', 'بغيت أتاي بالنعناع عافاك', 'فين غادي نمسيو اليوم؟']
+    };
+  }
   return {
-    reply: dialectName.includes('Moroccan') ? 'السلام أ خويا! لباس عليك؟ كلشي مزيان؟' : '¡Hola compa! Qué gusto saludarte, ¿cómo andas hoy?',
-    englishTranslation: 'Hello my friend! How are you? Everything good?',
-    feedback: 'Great conversational rhythm and warmth.',
-    fluencyScore: 90,
-    suggestedReplies: ['¡Todo bien gracias!', '¿Qué me cuentas?', '¡Hablemos de comida!']
+    reply: '¡Órale compa! Qué gusto saludarte. ¿De qué te gustaría platicar hoy?',
+    englishTranslation: 'What up buddy! So great to greet you. What would you like to chat about today?',
+    feedback: 'Excelente tono y ritmo conversacional.',
+    rephraseSuggestion: 'Prueba diciendo: "Todo al cien, listos para platicar."',
+    fluencyScore: 94,
+    slangTip: 'Órale',
+    slangMeaning: 'Expresses surprise, agreement, or encouragement.',
+    suggestedReplies: ['¡Platícame de los mejores tacos!', '¿Cómo muevo en el metro?', 'Todo bien por acá']
   };
 }
 

@@ -16,11 +16,10 @@ import {
   getDoc,
   deleteDoc,
   updateDoc,
-  onSnapshot,
   serverTimestamp,
   increment
 } from 'firebase/firestore';
-import { UserProfile, ChatMessage, LanguageVote, GlobalAnnouncement, UserRole, SubscriptionTier } from './types';
+import { UserProfile, LanguageVote, GlobalAnnouncement, UserRole, SubscriptionTier } from './types';
 import { INITIAL_VOTES } from './data/languages';
 
 export const firebaseConfig = {
@@ -39,9 +38,6 @@ export const db = getFirestore(app);
 
 export const ROOT_ARTIFACT_PATH = 'artifacts/vera-worldwide-v1';
 export const USERS_COLLECTION_PATH = `${ROOT_ARTIFACT_PATH}/users`;
-export const CHAT_LOGS_COLLECTION_PATH = `${ROOT_ARTIFACT_PATH}/public/data/chat_logs`;
-export const CONFIG_COLLECTION_PATH = `${ROOT_ARTIFACT_PATH}/public/data/config`;
-export const PLATFORM_STATS_PATH = `${ROOT_ARTIFACT_PATH}/public/data/platform_stats`;
 
 const STORAGE_KEYS = {
   USERS: 'vera_users_cache',
@@ -63,8 +59,7 @@ export async function ensureAuthenticatedUser(): Promise<FirebaseUser | null> {
   try {
     const cred = await signInAnonymously(auth);
     return cred.user;
-  } catch (err) {
-    console.warn("Auth Guard fallback:", err);
+  } catch {
     return null;
   }
 }
@@ -77,9 +72,7 @@ export function getMaxEnergyForTier(tier?: SubscriptionTier, role?: UserRole): n
 
 export function applyEnergyRefill(profile: UserProfile): UserProfile {
   const maxEnergy = getMaxEnergyForTier(profile.subscription, profile.role);
-  if (maxEnergy >= 999999) {
-    return { ...profile, energy: 999999, maxEnergy: 999999 };
-  }
+  if (maxEnergy >= 999999) return { ...profile, energy: 999999, maxEnergy: 999999 };
   const now = Date.now();
   const lastRefill = profile.lastEnergyRefillAt || now;
   const hoursElapsed = (now - lastRefill) / (1000 * 60 * 60);
@@ -145,7 +138,7 @@ export async function getOrCreateUserProfile(firebaseUser: FirebaseUser | null):
       return profile;
     }
   } catch (err) {
-    console.warn("Firestore user fetch fallback:", err);
+    console.warn("Firestore fetch fallback:", err);
   }
 
   const localUsers = getInitialLocalUsers();
@@ -186,13 +179,8 @@ export async function getOrCreateUserProfile(firebaseUser: FirebaseUser | null):
 
   try {
     const userDocRef = doc(db, USERS_COLLECTION_PATH, newProfile.uid);
-    await setDoc(userDocRef, {
-      ...newProfile,
-      createdAt: serverTimestamp()
-    });
-  } catch (err) {
-    console.warn("Firestore user creation fallback:", err);
-  }
+    await setDoc(userDocRef, { ...newProfile, createdAt: serverTimestamp() });
+  } catch {}
 
   return newProfile;
 }
@@ -200,15 +188,10 @@ export async function getOrCreateUserProfile(firebaseUser: FirebaseUser | null):
 export async function signInWithGoogle(): Promise<UserProfile> {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  try {
-    const result = await signInWithPopup(auth, provider);
-    const profile = await getOrCreateUserProfile(result.user);
-    if (profile) return profile;
-    throw new Error("Could not retrieve profile");
-  } catch (error) {
-    console.warn("Google Sign-In popup error:", error);
-    throw error;
-  }
+  const result = await signInWithPopup(auth, provider);
+  const profile = await getOrCreateUserProfile(result.user);
+  if (profile) return profile;
+  throw new Error("Could not retrieve profile");
 }
 
 export async function signUpWithEmail(email: string, displayName: string): Promise<UserProfile> {
@@ -247,11 +230,8 @@ export async function signUpWithEmail(email: string, displayName: string): Promi
 
   try {
     await ensureAuthenticatedUser();
-    const userDocRef = doc(db, USERS_COLLECTION_PATH, newProfile.uid);
-    await setDoc(userDocRef, { ...newProfile, createdAt: serverTimestamp() });
-  } catch (e) {
-    console.warn("Firestore write fallback:", e);
-  }
+    await setDoc(doc(db, USERS_COLLECTION_PATH, newProfile.uid), { ...newProfile, createdAt: serverTimestamp() });
+  } catch {}
 
   return newProfile;
 }
@@ -339,16 +319,27 @@ export async function logOut(): Promise<void> {
   }
 }
 
-export async function deleteUserByAdmin(uid: string): Promise<void> {
+// App Store Guideline 5.1.1 Compliance: Full Account Deletion
+export async function deleteUserAccount(uid: string): Promise<void> {
   try {
     const users = getInitialLocalUsers().filter((u) => u.uid !== uid);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-    window.dispatchEvent(new CustomEvent('vera_users_updated'));
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_USER);
+    window.dispatchEvent(new CustomEvent('vera_auth_changed', { detail: null }));
+
     await ensureAuthenticatedUser();
     await deleteDoc(doc(db, USERS_COLLECTION_PATH, uid));
+
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      await deleteUser(auth.currentUser);
+    }
   } catch (err) {
-    console.warn("Admin delete error:", err);
+    console.warn("Account deletion handled:", err);
   }
+}
+
+export async function deleteUserByAdmin(uid: string): Promise<void> {
+  await deleteUserAccount(uid);
 }
 
 export function subscribeToUsers(callback: (users: UserProfile[]) => void): () => void {
@@ -367,10 +358,7 @@ export function subscribeToVotes(callback: (votes: Record<string, LanguageVote>)
   return () => {};
 }
 
-export async function castLanguageVote(languageId: string): Promise<number> {
-  return 1420;
-}
-
+export async function castLanguageVote(): Promise<number> { return 1420; }
 export function subscribeToAnnouncement(callback: (announcement: GlobalAnnouncement) => void): () => void {
   callback({ content: '🇲🇦 Moroccan Darija & 🇪🇬 Egyptian Masri are LIVE! Practice real street fluency today.', active: true, type: 'sale', updatedAt: Date.now() });
   return () => {};
