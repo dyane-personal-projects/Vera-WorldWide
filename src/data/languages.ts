@@ -1,6 +1,7 @@
 import { DialectTrack } from '../types';
 
 export const DIALECT_TRACKS: DialectTrack[] = [
+  // --- ACTIVE LEARNING TRACKS (10 Core Languages & Dialects) ---
   {
     id: 'ar-MA',
     name: 'Arabic',
@@ -47,6 +48,21 @@ export const DIALECT_TRACKS: DialectTrack[] = [
     culturalNote: 'Master the polite diminutives (-ito) and ubiquitous slang terms like "chido", "onda", and "güey".'
   },
   {
+    id: 'es-CO',
+    name: 'Spanish',
+    dialect: 'Colombian Paisa',
+    flag: '🇨🇴',
+    region: 'Medellín & Antioquia',
+    continent: 'South America',
+    status: 'active',
+    level: 'A1 - C1',
+    samplePhrase: '¡Quiubo, parce! ¿Qué más pues, todo bien o qué?',
+    translation: "What's up, partner! How's everything going, all good?",
+    persona: 'Mateo (El Poblado Creative)',
+    description: 'Ultra-crisp pronunciation, melodic musicality, and warm Antioquian greetings.',
+    culturalNote: 'Embrace "vos" and "usted" respect forms alongside affectionate terms like "parce".'
+  },
+  {
     id: 'fr-FR',
     name: 'French',
     dialect: 'Parisian French',
@@ -77,21 +93,6 @@ export const DIALECT_TRACKS: DialectTrack[] = [
     culturalNote: 'Understand Keigo contextual switches and natural sentence-ending particles.'
   },
   {
-    id: 'es-CO',
-    name: 'Spanish',
-    dialect: 'Colombian Paisa',
-    flag: '🇨🇴',
-    region: 'Medellín & Antioquia',
-    continent: 'South America',
-    status: 'active',
-    level: 'A1 - C1',
-    samplePhrase: '¡Quiubo, parce! ¿Qué más pues, todo bien o qué?',
-    translation: "What's up, partner! How's everything going, all good?",
-    persona: 'Mateo (El Poblado Creative)',
-    description: 'Ultra-crisp pronunciation, melodic musicality, and warm Antioquian greetings.',
-    culturalNote: 'Embrace "vos" and "usted" respect forms alongside affectionate terms like "parce".'
-  },
-  {
     id: 'pt-BR',
     name: 'Portuguese',
     dialect: 'Carioca Brazilian',
@@ -107,14 +108,61 @@ export const DIALECT_TRACKS: DialectTrack[] = [
     culturalNote: 'Vibrant slang like "beleza", "maneiro", and melodic intonation.'
   },
   {
+    id: 'it-IT',
+    name: 'Italian',
+    dialect: 'Rome & Standard Italian',
+    flag: '🇮🇹',
+    region: 'Rome & Lazio',
+    continent: 'Europe',
+    status: 'active',
+    level: 'A1 - C1',
+    samplePhrase: 'A sto punto facciamo du spaghi in centro, che ne dici?',
+    translation: 'At this point let us grab some spaghetti downtown, what do you say?',
+    persona: 'Marco (Trastevere Local)',
+    description: 'Expressive hand gestures, warm Roman cadence, and vibrant culinary chatter.',
+    culturalNote: 'Master espresso bar banter and local Roman expressions ("Daje!").'
+  },
+  {
+    id: 'de-DE',
+    name: 'German',
+    dialect: 'Berlin Urban German',
+    flag: '🇩🇪',
+    region: 'Berlin & Mitte',
+    continent: 'Europe',
+    status: 'active',
+    level: 'A1 - C1',
+    samplePhrase: 'Keine Sorge, läuft alles wie am schnürchen!',
+    translation: 'No worries, everything is running like clockwork!',
+    persona: 'Lena (Kreuzberg Creative)',
+    description: 'Crisp urban vocabulary, colloquial contractions, and modern Berlin cafe culture.',
+    culturalNote: 'Navigate informal "Du" versus respectful "Sie" switches effortlessly.'
+  },
+  {
+    id: 'zh-CN',
+    name: 'Chinese',
+    dialect: 'Mandarin (Beijing Standard)',
+    flag: '🇨🇳',
+    region: 'Beijing & Northern China',
+    continent: 'Asia',
+    status: 'active',
+    level: 'HSK 1 - 6',
+    samplePhrase: '吃了吗您呐？咱们找个地儿喝茶去！',
+    translation: 'Have you eaten? Let us find a spot and grab some tea!',
+    persona: 'Wei (Hutong Navigator)',
+    description: 'Erhuahua (r-coloring), vibrant northern colloquialisms, and social hospitality.',
+    culturalNote: 'Appreciate tone mastery and traditional courtyard neighborhood greetings.'
+  },
+
+  // --- COMING SOON & VOTING POOL (Upcoming Dialect Drops) ---
+  {
     id: 'it-NAP',
     name: 'Italian',
     dialect: 'Neapolitan (Napulitano)',
-    flag: '🇮🇹',
+    flag: '🤌',
     region: 'Naples & Campania',
     continent: 'Europe',
     status: 'coming_soon',
-    level: 'Authentic Regional',
+    level: 'Voting Candidate',
     samplePhrase: 'Uè guagliò, stammo senza pensieri stasera!',
     translation: "Hey kid, we're without worries tonight!",
     persona: 'Gianluigi (Spaccanapoli Host)',
@@ -129,10 +177,10 @@ export const DIALECT_TRACKS: DialectTrack[] = [
     region: 'Hong Kong & Guangdong',
     continent: 'Asia',
     status: 'coming_soon',
-    level: 'High-Velocity Tonal',
-    samplePhrase: '今日得唔得閒飲茶呀？今晚約埋班FD出嚟啦！',
-    translation: "Are you free to have dim sum? Let's gather friends tonight!",
-    persona: 'Wing (Mong Kok Night Navigator)',
+    level: 'Voting Candidate',
+    samplePhrase: '今日得唔得閒飲茶呀？',
+    translation: "Are you free to have dim sum today?",
+    persona: 'Wing (Mong Kok Navigator)',
     description: '9 distinct tones, rich colloquial idioms, and snappy fast-paced urban humor.',
     culturalNote: 'Deep connection to culinary gatherings, street markets, and cinema heritage.'
   },
@@ -144,9 +192,9 @@ export const DIALECT_TRACKS: DialectTrack[] = [
     region: 'Beirut & Damascus',
     continent: 'Middle East',
     status: 'coming_soon',
-    level: 'Conversational Fluency',
-    samplePhrase: 'كيفك يا حبيبي؟ شو في ما في اليوم؟',
-    translation: "How are you my dear? What's going on today?",
+    level: 'Voting Candidate',
+    samplePhrase: 'كيفك يا حبيبي؟ شو في ما في؟',
+    translation: "How are you my dear? What's going on?",
     persona: 'Nour (Beirut Café Host)',
     description: 'Soft, melodic glottal pronunciation, warm hospitality formulas, and regional charm.',
     culturalNote: 'Famous throughout the Levant for musical intonation and multi-lingual code-switching.'
@@ -155,12 +203,12 @@ export const DIALECT_TRACKS: DialectTrack[] = [
     id: 'de-BAV',
     name: 'German',
     dialect: 'Bavarian (Boarisch)',
-    flag: '🇩🇪',
-    region: 'Munich & Alpine Bavaria',
+    flag: '🍺',
+    region: 'Munich & Alps',
     continent: 'Europe',
     status: 'coming_soon',
-    level: 'Alpine Heritage',
-    samplePhrase: 'Servus beinand! Gemma auf a gscheide Brotzeit?',
+    level: 'Voting Candidate',
+    samplePhrase: 'Servus beinand! Gemma auf a Brotzeit?',
     translation: 'Greetings everyone! Shall we go for a proper Bavarian snack?',
     persona: 'Florian (Alpine Guide)',
     description: 'Distinct vowel shifts, rich Bavarian idioms, and cozy tavern ("Wirtshaus") culture.',
@@ -170,15 +218,15 @@ export const DIALECT_TRACKS: DialectTrack[] = [
 
 export const INITIAL_VOTES: Record<string, { count: number; name: string; dialect: string; flag: string; region: string; description: string }> = {
   'it-NAP': {
-    count: 1120,
+    count: 1420,
     name: 'Italian',
     dialect: 'Neapolitan (Napulitano)',
-    flag: '🇮🇹',
+    flag: '🤌',
     region: 'Naples & Campania',
     description: 'UNESCO-recognized southern heritage language packed with passion and culinary culture.'
   },
   'zh-HK': {
-    count: 890,
+    count: 1150,
     name: 'Chinese',
     dialect: 'Hong Kong Cantonese',
     flag: '🇭🇰',
@@ -186,7 +234,7 @@ export const INITIAL_VOTES: Record<string, { count: number; name: string; dialec
     description: 'Dynamic 9-tone colloquial system beloved in global cinema and dim sum culture.'
   },
   'ar-LEV': {
-    count: 840,
+    count: 980,
     name: 'Arabic',
     dialect: 'Levantine (Lebanese)',
     flag: '🇱🇧',
@@ -194,10 +242,10 @@ export const INITIAL_VOTES: Record<string, { count: number; name: string; dialec
     description: 'Renowned for warm, rhythmic greetings, poetic hospitality, and cross-cultural elegance.'
   },
   'de-BAV': {
-    count: 540,
+    count: 610,
     name: 'German',
     dialect: 'Bavarian (Boarisch)',
-    flag: '🇩🇪',
+    flag: '🍺',
     region: 'Munich & Alps',
     description: 'Rich southern heritage dialect with hearty Alpine phrasing and distinct vowels.'
   }
