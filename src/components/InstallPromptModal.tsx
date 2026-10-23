@@ -1,100 +1,109 @@
-import React from 'react';
-import { X, Download, Share, PlusSquare, Smartphone, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, Smartphone, X, Sparkles } from 'lucide-react';
 
-interface InstallPromptModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  deferredPrompt: any;
-  onInstalled?: () => void;
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
-export const InstallPromptModal: React.FC<InstallPromptModalProps> = ({
-  isOpen,
-  onClose,
-  deferredPrompt,
-  onInstalled
-}) => {
-  if (!isOpen) return null;
+export const InstallPromptModal: React.FC = () => {
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showBanner, setShowBanner] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  useEffect(() => {
+    // Detect iOS Safari
+    const ua = window.navigator.userAgent;
+    const isIOSDevice = /ipad|iphone|ipod/.test(ua.toLowerCase()) && !(window as any).MSStream;
+    setIsIOS(isIOSDevice);
+
+    // Check if already dismissed in this session
+    const dismissed = sessionStorage.getItem('vera_install_dismissed');
+    if (dismissed) return;
+
+    // Listen for standard PWA install prompt event
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setShowBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // If iOS and not standalone, show prompt after 4 seconds
+    if (isIOSDevice && !window.matchMedia('(display-mode: standalone)').matches) {
+      const timer = setTimeout(() => setShowBanner(true), 4000);
+      return () => clearTimeout(timer);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        onInstalled?.();
+      await deferredPrompt.prompt();
+      const choiceResult = await deferredPrompt.userChoice;
+      if (choiceResult.outcome === 'accepted') {
+        setShowBanner(false);
       }
-      onClose();
+      setDeferredPrompt(null);
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-xl animate-in fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative text-slate-200">
-        <button
-          onClick={onClose}
-          className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"
-        >
-          <X size={20} />
-        </button>
+  const handleDismiss = () => {
+    setShowBanner(false);
+    sessionStorage.setItem('vera_install_dismissed', 'true');
+  };
 
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center mx-auto mb-5 text-white shadow-xl shadow-cyan-950/50">
-          <Smartphone size={32} />
+  if (!showBanner) return null;
+
+  return (
+    <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-50 max-w-sm w-full animate-in slide-in-from-bottom-6 duration-300">
+      <div className="bg-slate-900/95 backdrop-blur-2xl border border-emerald-500/30 rounded-3xl p-5 shadow-2xl shadow-emerald-500/10 text-slate-100 relative overflow-hidden">
+        {/* Glow accent */}
+        <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-md shadow-emerald-500/20 shrink-0">
+              <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
+                <Smartphone size={22} className="text-emerald-400" />
+              </div>
+            </div>
+            <div>
+              <h4 className="font-black text-white text-sm tracking-tight flex items-center gap-1.5">
+                Install Vera App <Sparkles size={13} className="text-amber-400 fill-amber-400" />
+              </h4>
+              <p className="text-[11px] text-slate-400">Add to Home Screen for full immersive speed.</p>
+            </div>
+          </div>
+          <button
+            onClick={handleDismiss}
+            className="text-slate-400 hover:text-white p-1 rounded-xl hover:bg-slate-800 transition-colors"
+          >
+            <X size={16} />
+          </button>
         </div>
 
-        <h2 className="text-2xl font-black text-white text-center mb-2 tracking-tight">
-          Install Vera WorldWide
-        </h2>
-        <p className="text-xs text-slate-400 text-center mb-6 leading-relaxed">
-          Install Vera as a standalone mobile application on your iPhone, iPad, or Android device.
-          Enjoy full offline access, zero browser bars, and instantaneous audio feedback.
-        </p>
-
         {isIOS ? (
-          <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3 mb-6 text-xs">
-            <div className="font-bold text-cyan-400 uppercase tracking-wider text-[11px]">
-              How to install on iOS Safari:
-            </div>
-            <div className="flex items-center gap-3 text-slate-300">
-              <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center shrink-0 text-cyan-400">
-                <Share size={16} />
-              </div>
-              <span>1. Tap the <strong>Share</strong> button at the bottom of Safari.</span>
-            </div>
-            <div className="flex items-center gap-3 text-slate-300">
-              <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center shrink-0 text-cyan-400">
-                <PlusSquare size={16} />
-              </div>
-              <span>2. Scroll down and select <strong>Add to Home Screen</strong>.</span>
-            </div>
-            <div className="flex items-center gap-3 text-slate-300">
-              <div className="w-8 h-8 rounded-lg bg-emerald-950 border border-emerald-800 flex items-center justify-center shrink-0 text-emerald-400">
-                <Check size={16} />
-              </div>
-              <span>3. Tap <strong>Add</strong> in the top-right corner. Enjoy full-screen Vera!</span>
-            </div>
+          <div className="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/80 text-xs text-slate-300 space-y-1.5">
+            <p className="font-semibold text-emerald-400">To install on iOS Safari:</p>
+            <p className="text-[11px] leading-relaxed">
+              1. Tap the <span className="text-white font-bold">Share</span> button at the bottom of your browser.<br />
+              2. Scroll down and tap <span className="text-white font-bold">« Add to Home Screen »</span>.
+            </p>
           </div>
-        ) : deferredPrompt ? (
+        ) : (
           <button
             onClick={handleInstallClick}
-            className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white font-black text-sm uppercase font-mono tracking-wider rounded-xl transition-all shadow-lg shadow-cyan-950/50 flex items-center justify-center gap-2 mb-4"
+            className="w-full mt-2 py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 active:scale-95"
           >
-            <Download size={18} />
-            <span>Install Now to Home Screen</span>
+            <Download size={15} />
+            <span>Install App Now</span>
           </button>
-        ) : (
-          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-400 text-center mb-4">
-            Vera is already installed or your browser supports installing directly from the address bar menu (three dots → &quot;Install App&quot;).
-          </div>
         )}
-
-        <button
-          onClick={onClose}
-          className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors"
-        >
-          Got it
-        </button>
       </div>
     </div>
   );
