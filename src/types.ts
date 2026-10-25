@@ -1,5 +1,6 @@
 export type UserRole = 'user' | 'staff';
 export type SubscriptionTier = 'free' | 'plus' | 'unlimited' | 'premium';
+export type DialectStatus = 'active' | 'coming_soon' | 'future_pool';
 
 export interface UserProfile {
   uid: string;
@@ -7,7 +8,7 @@ export interface UserProfile {
   displayName?: string;
   role: UserRole;
   subscription: SubscriptionTier;
-  tier?: SubscriptionTier; // Friendly alias
+  tier?: SubscriptionTier;
   sparks?: number;
   energy?: number;
   maxEnergy?: number;
@@ -59,7 +60,7 @@ export interface DialectTrack {
   flag: string;
   region: string;
   continent: 'North America' | 'South America' | 'Europe' | 'Africa' | 'Asia' | 'Middle East';
-  status: 'active' | 'coming_soon';
+  status: DialectStatus;
   level: string;
   samplePhrase: string;
   translation: string;
@@ -98,14 +99,14 @@ export interface SupportTicket {
   status?: 'open' | 'resolved';
 }
 
-export type ActiveView = 
-  | 'landing' 
-  | 'tutor' 
-  | 'admin' 
-  | 'dashboard' 
-  | 'arcade' 
-  | 'vocab' 
-  | 'store' 
+export type ActiveView =
+  | 'landing'
+  | 'tutor'
+  | 'admin'
+  | 'dashboard'
+  | 'arcade'
+  | 'vocab'
+  | 'store'
   | 'placement'
   | 'legal'
   | 'privacy'
