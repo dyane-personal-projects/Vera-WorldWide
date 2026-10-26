@@ -1,26 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Target,
-  Play,
-  HelpCircle,
-  BrainCircuit,
-  Award,
-  ArrowRight,
-  CheckCircle2,
-  AlertCircle,
   Volume2,
-  Sparkles,
-  TrendingUp,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
+  Award,
   RotateCcw,
-  Zap,
-  Flame,
-  ShieldCheck,
-  Check
+  Sparkles,
+  BrainCircuit,
+  Compass
 } from 'lucide-react';
-import { DialectTrack, UserProfile } from '../types';
-import { updateUserCefrLevel } from '../firebase';
-import { getDialectPlacementQuestions, QuizQuestion, FluencyLevelKey } from '../data/placementCurriculum';
-import { isNonLatinScript, shouldShowTransliteration, getTransliteration } from '../utils/transliteration';
+import { UserProfile, DialectTrack } from '../types';
+import { getDialectPlacementQuestions, FluencyLevelKey, QuizQuestion } from '../data/placementCurriculum';
+import { playNativeAudio, stopAllAudio } from '../services/gemini';
+import { getTutorPersona } from '../data/tutorPersonas';
+import { getTransliteration, usesNonLatinScript } from '../utils/transliteration';
 
 interface PlacementQuizProps {
   user: UserProfile | null;
@@ -29,297 +23,266 @@ interface PlacementQuizProps {
   onComplete: () => void;
 }
 
-export type { FluencyLevelKey };
-
-interface LevelDefinition {
+const LEVEL_TIERS: {
   key: FluencyLevelKey;
-  cefrCode: string;
-  name: string;
-  tagline: string;
-  color: string;
-  borderColor: string;
-  bgLight: string;
-  description: string;
-  nextTier?: FluencyLevelKey;
-  prevTier?: FluencyLevelKey;
-}
-
-const FLUENCY_LEVELS: LevelDefinition[] = [
+  cefr: 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
+  title: string;
+  subtitle: string;
+  badge: string;
+}[] = [
   {
     key: 'beginner',
-    cefrCode: 'A1/A2',
-    name: 'Beginner',
-    tagline: 'Foundations & Travel Basics',
-    color: 'text-emerald-400',
-    borderColor: 'border-emerald-500',
-    bgLight: 'bg-emerald-500/10',
-    description: 'You understand basic greetings, simple numbers, asking directions, and polite ordering.',
-    nextTier: 'intermediate'
+    cefr: 'A1',
+    title: 'Beginner Foundations',
+    subtitle: 'Essential street greetings, polite requests, and survival phrases',
+    badge: 'A1'
   },
   {
     key: 'intermediate',
-    cefrCode: 'B1/B2',
-    name: 'Intermediate',
-    tagline: 'Conversational Street Explorer',
-    color: 'text-cyan-400',
-    borderColor: 'border-cyan-500',
-    bgLight: 'bg-cyan-500/10',
-    description: 'You can hold daily conversations, hail cabs, haggle at markets, and describe past events.',
-    nextTier: 'advanced',
-    prevTier: 'beginner'
+    cefr: 'A2',
+    title: 'Elementary Street Flow',
+    subtitle: 'Ordering at cafés, hailing taxis, small change, and daily timing',
+    badge: 'A2'
   },
   {
     key: 'advanced',
-    cefrCode: 'C1',
-    name: 'Advanced',
-    tagline: 'Confident & Nuanced Speaker',
-    color: 'text-indigo-400',
-    borderColor: 'border-indigo-500',
-    bgLight: 'bg-indigo-500/10',
-    description: 'You speak with rapid flow, understand everyday street slang, humor, and debate topics naturally.',
-    nextTier: 'fluent',
-    prevTier: 'intermediate'
+    cefr: 'B1',
+    title: 'Intermediate Banter',
+    subtitle: 'Playful teasing, souk bargaining, and everyday local idioms',
+    badge: 'B1'
   },
   {
     key: 'fluent',
-    cefrCode: 'C2',
-    name: 'Fluent',
-    tagline: 'Effortless Conversational Command',
-    color: 'text-amber-400',
-    borderColor: 'border-amber-500',
-    bgLight: 'bg-amber-500/10',
-    description: 'Near-native speed. You catch fast sarcasm, double meanings, idioms, and speak without pauses.',
-    nextTier: 'native',
-    prevTier: 'advanced'
+    cefr: 'B2',
+    title: 'Upper-Intermediate Fluency',
+    subtitle: 'Fast contractions, social subtext, and neighborhood respect codes',
+    badge: 'B2'
   },
   {
     key: 'native',
-    cefrCode: 'MASTER',
-    name: 'Native (Street Master)',
-    tagline: 'Deep Regional Vernacular',
-    color: 'text-rose-400',
-    borderColor: 'border-rose-500',
-    bgLight: 'bg-rose-500/10',
-    description: 'You master hyper-local street slang, regional cadences, verlan, and neighborhood cultural banter.',
-    prevTier: 'fluent'
+    cefr: 'C1',
+    title: 'Mastery & Street Proverbs',
+    subtitle: 'Deep cultural metaphors, folk wisdom, and native-speed humor',
+    badge: 'C1'
   }
 ];
 
 export const PlacementQuiz: React.FC<PlacementQuizProps> = ({
-  user,
   selectedDialect,
   onUpdateUserLevel,
   onComplete
 }) => {
-  const [selectedLevelKey, setSelectedLevelKey] = useState<FluencyLevelKey>('intermediate');
-  const [hasStartedQuiz, setHasStartedQuiz] = useState(false);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [score, setScore] = useState(0);
-  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
-  const [isChecked, setIsChecked] = useState(false);
+  const [stage, setStage] = useState<'select_mode' | 'testing' | 'results'>('select_mode');
+  const [activeTierIdx, setActiveTierIdx] = useState<number>(0);
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [isAnswered, setIsAnswered] = useState(false);
+  const [tierCorrectCount, setTierCorrectCount] = useState(0);
+  const [totalCorrect, setTotalCorrect] = useState(0);
+  const [totalAttempted, setTotalAttempted] = useState(0);
+  const [assessedCefr, setAssessedCefr] = useState<'A1' | 'A2' | 'B1' | 'B2' | 'C1'>('A1');
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const [quizFinished, setQuizFinished] = useState(false);
+  const [showPhonetics, setShowPhonetics] = useState(true);
 
-  const isArabic = selectedDialect.id.startsWith('ar');
-  const isNonLatin = isNonLatinScript(selectedDialect.id);
-  const [showTransliteration, setShowTransliteration] = useState(() =>
-    shouldShowTransliteration(selectedDialect.id, selectedLevelKey)
-  );
+  const isNonLatin = usesNonLatinScript(selectedDialect.id);
+  const activeTier = LEVEL_TIERS[activeTierIdx] || LEVEL_TIERS[0];
+  const currentQ = questions[currentIndex];
 
-  const activeLevelDef = FLUENCY_LEVELS.find((l) => l.key === selectedLevelKey) || FLUENCY_LEVELS[1];
-  const activeQuestions = getDialectPlacementQuestions(selectedLevelKey, selectedDialect.id);
-  const currentQ = activeQuestions[currentQuestionIndex] || activeQuestions[0];
+  useEffect(() => {
+    stopAllAudio();
+    setStage('select_mode');
+    setActiveTierIdx(0);
+    setCurrentIndex(0);
+    setSelectedOption(null);
+    setIsAnswered(false);
+    setTierCorrectCount(0);
+    setTotalCorrect(0);
+    setTotalAttempted(0);
+  }, [selectedDialect.id]);
 
-  // Reset question state and update transliteration default when dialect or level changes
-  React.useEffect(() => {
-    setCurrentQuestionIndex(0);
-    setSelectedOptionIndex(null);
-    setIsChecked(false);
-    setShowTransliteration(shouldShowTransliteration(selectedDialect.id, selectedLevelKey));
-  }, [selectedDialect.id, selectedLevelKey]);
-
-  const playSpokenAudio = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      if (selectedDialect.id.startsWith('es')) utterance.lang = 'es-MX';
-      else if (selectedDialect.id.startsWith('fr')) utterance.lang = 'fr-FR';
-      else if (selectedDialect.id.startsWith('ja')) utterance.lang = 'ja-JP';
-      else if (selectedDialect.id.startsWith('ar')) utterance.lang = 'ar-EG';
-      else if (selectedDialect.id.startsWith('pt')) utterance.lang = 'pt-BR';
-      else if (selectedDialect.id.startsWith('it')) utterance.lang = 'it-IT';
-      else if (selectedDialect.id.startsWith('de')) utterance.lang = 'de-DE';
-      else utterance.lang = 'en-US';
-
-      utterance.rate = 0.95;
-      setIsPlayingAudio(true);
-      utterance.onend = () => setIsPlayingAudio(false);
-      utterance.onerror = () => setIsPlayingAudio(false);
-      window.speechSynthesis.speak(utterance);
-    }
+  const startQuizAtTier = (tierIndex: number) => {
+    stopAllAudio();
+    const tier = LEVEL_TIERS[tierIndex] || LEVEL_TIERS[0];
+    const freshQuestions = getDialectPlacementQuestions(tier.key, selectedDialect.id);
+    setActiveTierIdx(tierIndex);
+    setQuestions(freshQuestions);
+    setCurrentIndex(0);
+    setSelectedOption(null);
+    setIsAnswered(false);
+    setTierCorrectCount(0);
+    setAssessedCefr(tier.cefr);
+    setStage('testing');
   };
 
-  const handleSelectOption = (idx: number) => {
-    if (isChecked) return;
-    setSelectedOptionIndex(idx);
-    setIsChecked(true);
+  const handleSkipAsBeginner = () => {
+    stopAllAudio();
+    setAssessedCefr('A1');
+    onUpdateUserLevel('A1');
+    onComplete();
+  };
 
-    if (idx === currentQ.correctIndex) {
-      setScore((prev) => prev + 1);
+  const handlePlayAudio = (textToSpeak?: string) => {
+    const phrase = textToSpeak || currentQ?.spokenAudio;
+    if (!phrase) return;
+    const persona = getTutorPersona(selectedDialect.id);
+    setIsPlayingAudio(true);
+    playNativeAudio({
+      text: phrase,
+      dialectId: selectedDialect.id,
+      voiceGender: persona.voiceGender,
+      personaId: persona.id,
+      onEnd: () => setIsPlayingAudio(false),
+      onError: () => setIsPlayingAudio(false)
+    });
+  };
+
+  const handleSelectOption = (index: number) => {
+    if (isAnswered || !currentQ) return;
+    setSelectedOption(index);
+    setIsAnswered(true);
+    setTotalAttempted((prev) => prev + 1);
+
+    if (index === currentQ.correctIndex) {
+      setTierCorrectCount((prev) => prev + 1);
+      setTotalCorrect((prev) => prev + 1);
     }
   };
 
   const handleNextQuestion = () => {
-    if (currentQuestionIndex + 1 < activeQuestions.length) {
-      setCurrentQuestionIndex((prev) => prev + 1);
-      setSelectedOptionIndex(null);
-      setIsChecked(false);
-    } else {
-      setQuizFinished(true);
+    if (!currentQ) return;
+    stopAllAudio();
+    setSelectedOption(null);
+    setIsAnswered(false);
+
+    if (currentIndex + 1 < questions.length) {
+      setCurrentIndex((prev) => prev + 1);
+      return;
     }
+
+    const passedTier = tierCorrectCount >= Math.ceil(questions.length * 0.7);
+
+    if (passedTier && activeTierIdx + 1 < LEVEL_TIERS.length) {
+      const nextIdx = activeTierIdx + 1;
+      const nextTier = LEVEL_TIERS[nextIdx];
+      setAssessedCefr(nextTier.cefr);
+      setActiveTierIdx(nextIdx);
+      setQuestions(getDialectPlacementQuestions(nextTier.key, selectedDialect.id));
+      setCurrentIndex(0);
+      setTierCorrectCount(0);
+      return;
+    }
+
+    const finalCefr = passedTier ? activeTier.cefr : LEVEL_TIERS[Math.max(0, activeTierIdx - 1)].cefr;
+    setAssessedCefr(finalCefr);
+    onUpdateUserLevel(finalCefr);
+    setStage('results');
   };
 
-  // Determine diagnostic placement (Above, At, or Below)
-  const getPlacementResult = () => {
-    const total = activeQuestions.length;
-    const percentage = (score / total) * 100;
-
-    if (score === total) {
-      // 100% -> Above level
-      const recommendedTierKey = activeLevelDef.nextTier || activeLevelDef.key;
-      const recommendedDef = FLUENCY_LEVELS.find((l) => l.key === recommendedTierKey) || activeLevelDef;
-
-      return {
-        status: 'above' as const,
-        badgeText: 'ABOVE THIS LEVEL! 🚀',
-        badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
-        headline: `Mastered ${activeLevelDef.name} with Flying Colors!`,
-        summary: `You scored a perfect ${score}/${total} (100%). You have fully mastered ${activeLevelDef.name} proficiencies in ${selectedDialect.dialect}.`,
-        recommendedLevel: recommendedDef.cefrCode,
-        recommendedName: recommendedDef.name,
-        recommendationMsg: activeLevelDef.nextTier
-          ? `We strongly recommend advancing you to ${recommendedDef.name} (${recommendedDef.cefrCode}) to accelerate your learning!`
-          : `You have reached peak Native Master street fluency!`
-      };
-    } else if (score >= 3) {
-      // 75% -> At level
-      return {
-        status: 'at' as const,
-        badgeText: 'PERFECTLY MATCHED (AT THIS LEVEL)! 🎯',
-        badgeColor: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
-        headline: `Verified at ${activeLevelDef.name} Level!`,
-        summary: `You scored ${score}/${total} (75%). Your conversational instincts are firmly rooted in this tier.`,
-        recommendedLevel: activeLevelDef.cefrCode,
-        recommendedName: activeLevelDef.name,
-        recommendationMsg: `Your lessons will be calibrated precisely to ${activeLevelDef.name} (${activeLevelDef.cefrCode})—the ideal sweet spot for rapid street fluency.`
-      };
-    } else {
-      // < 75% -> Below level
-      const recommendedTierKey = activeLevelDef.prevTier || activeLevelDef.key;
-      const recommendedDef = FLUENCY_LEVELS.find((l) => l.key === recommendedTierKey) || activeLevelDef;
-
-      return {
-        status: 'below' as const,
-        badgeText: 'BELOW THIS LEVEL (GROWTH ZONE) 💡',
-        badgeColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
-        headline: `Found Your Growth Zone in ${selectedDialect.dialect}`,
-        summary: `You scored ${score}/${total} on the ${activeLevelDef.name} assessment. A few fast street idioms caught you off guard.`,
-        recommendedLevel: recommendedDef.cefrCode,
-        recommendedName: recommendedDef.name,
-        recommendationMsg: activeLevelDef.prevTier
-          ? `We recommend calibrating your path at ${recommendedDef.name} (${recommendedDef.cefrCode}) so you build strong, instinctive reflexes without getting frustrated.`
-          : `We recommend starting with foundational street survival lessons to build initial confidence.`
-      };
-    }
-  };
-
-  const handleApplyPlacement = async (levelToApply: string) => {
-    if (user?.uid) {
-      await updateUserCefrLevel(user.uid, levelToApply);
-    }
-    onUpdateUserLevel(levelToApply);
-    onComplete();
-  };
-
-  // STEP 1: Level Picker Screen
-  if (!hasStartedQuiz) {
+  if (stage === 'select_mode') {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 bg-slate-950 text-slate-100 font-sans overflow-y-auto">
-        <div className="max-w-3xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-6">
-          <div className="text-center space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs font-mono font-bold">
-              <BrainCircuit size={14} className="text-cyan-400" />
-              <span>DIAGNOSTIC LEVEL CALIBRATION • {selectedDialect.flag} {selectedDialect.dialect}</span>
+      <div className="flex-1 overflow-y-auto p-6 bg-slate-950 text-slate-100">
+        <div className="max-w-3xl mx-auto space-y-8 py-4">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+            <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">{selectedDialect.flag}</span>
+              <div>
+                <span className="text-xs font-black uppercase tracking-widest text-emerald-400">
+                  {selectedDialect.dialect} • Adaptive Placement
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-black text-white">
+                  Where should we start your {selectedDialect.dialect} journey?
+                </h1>
+              </div>
             </div>
-            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
-              What level do you feel you are at?
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
-              Select your self-assessed level. We will launch a tailored 4-question quiz for that tier to determine if your lessons should be <span className="text-white font-bold">at, above, or below</span> that level.
+            <p className="text-sm text-slate-400 leading-relaxed max-w-2xl">
+              Jump straight in as a complete beginner, or take our adaptive street-fluency assessment with native audio and randomized questions tailored to {selectedDialect.region}.
+            </p>
+
+            <div className="mt-6 p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Compass size={18} className="text-emerald-400" />
+                  <h3 className="font-black text-white text-base">I'm Brand New to {selectedDialect.dialect} (Start at A1)</h3>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  Skip the test and start from zero with your local teacher guiding you word-by-word.
+                </p>
+              </div>
+              <button
+                onClick={handleSkipAsBeginner}
+                className="px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider shrink-0 transition-all cursor-pointer shadow-lg shadow-emerald-500/20"
+              >
+                Start at A1 ➔
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-black uppercase tracking-wider text-slate-400 px-1 flex items-center gap-2">
+              <BrainCircuit size={16} className="text-cyan-400" />
+              <span>Or Choose a Level to Test Your {selectedDialect.dialect} Skills:</span>
+            </h2>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {LEVEL_TIERS.map((tier, idx) => (
+                <button
+                  key={tier.key}
+                  onClick={() => startQuizAtTier(idx)}
+                  className="p-5 rounded-2xl bg-slate-900/90 hover:bg-slate-900 border border-slate-800 hover:border-cyan-500/50 text-left transition-all group cursor-pointer flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-black text-xs">
+                        CEFR {tier.badge}
+                      </span>
+                      <span className="text-xs font-bold text-slate-500 group-hover:text-cyan-400 transition-colors">
+                        Start Assessment ➔
+                      </span>
+                    </div>
+                    <h3 className="font-black text-white text-base group-hover:text-cyan-300 transition-colors">
+                      {tier.title}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">{tier.subtitle}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (stage === 'results' || !currentQ) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6 bg-slate-950 text-slate-100">
+        <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
+          <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-2xl mx-auto flex items-center justify-center">
+            <Award size={34} />
+          </div>
+          <div>
+            <span className="text-xs font-black uppercase tracking-widest text-emerald-400">
+              {selectedDialect.flag} {selectedDialect.dialect} Official Placement
+            </span>
+            <h2 className="text-3xl font-black text-white mt-1">Level {assessedCefr} Unlocked!</h2>
+            <p className="text-sm text-slate-400 mt-2">
+              You scored <span className="text-white font-bold">{totalCorrect} / {totalAttempted}</span> across our adaptive street-fluency assessment. Your local teachers and lesson path are now calibrated to <span className="text-emerald-400 font-bold">CEFR {assessedCefr}</span>.
             </p>
           </div>
 
-          {/* 5 Fluency Level Cards */}
-          <div className="space-y-3">
-            {FLUENCY_LEVELS.map((level) => {
-              const isSelected = selectedLevelKey === level.key;
-
-              return (
-                <div
-                  key={level.key}
-                  onClick={() => setSelectedLevelKey(level.key)}
-                  className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                    isSelected
-                      ? `bg-slate-950 ${level.borderColor} shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500/50`
-                      : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-950 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-start sm:items-center gap-3.5">
-                    <div className={`w-11 h-11 rounded-2xl ${level.bgLight} border ${level.borderColor}/40 flex items-center justify-center shrink-0`}>
-                      <span className={`text-xs font-black font-mono ${level.color}`}>{level.cefrCode}</span>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-bold text-white">{level.name}</h3>
-                        <span className="text-[10px] text-slate-400 font-mono">({level.tagline})</span>
-                      </div>
-                      <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                        {level.description}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${isSelected ? 'border-cyan-400 bg-cyan-400 text-slate-950' : 'border-slate-700'}`}>
-                      {isSelected && <Check size={12} strokeWidth={3} />}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              onClick={() => startQuizAtTier(activeTierIdx)}
+              className="flex-1 py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <RotateCcw size={15} /> Retake With New Questions
+            </button>
             <button
               onClick={onComplete}
-              className="w-full sm:w-auto text-xs text-slate-400 hover:text-white transition-colors"
+              className="flex-1 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
             >
-              Skip & Keep Current Level ({user?.cefrLevel || 'A2'})
-            </button>
-
-            <button
-              onClick={() => {
-                setHasStartedQuiz(true);
-                setCurrentQuestionIndex(0);
-                setScore(0);
-                setSelectedOptionIndex(null);
-                setIsChecked(false);
-                setQuizFinished(false);
-              }}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs uppercase font-mono tracking-wider shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center justify-center gap-2"
-            >
-              <Play size={15} fill="currentColor" />
-              <span>Start {activeLevelDef.name} Quiz</span>
+              Continue to Learning Path ➔
             </button>
           </div>
         </div>
@@ -327,232 +290,145 @@ export const PlacementQuiz: React.FC<PlacementQuizProps> = ({
     );
   }
 
-  // STEP 3: Quiz Finished & Diagnostic Outcome Screen
-  if (quizFinished) {
-    const result = getPlacementResult();
-
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 bg-slate-950 text-slate-100 font-sans">
-        <div className="max-w-xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-6 text-center animate-in fade-in">
-          <div className="w-16 h-16 rounded-3xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400 shadow-xl shadow-cyan-500/20">
-            <Award size={36} />
-          </div>
-
-          <div className="space-y-2">
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold border ${result.badgeColor}`}>
-              <TrendingUp size={14} />
-              <span>{result.badgeText}</span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white">
-              {result.headline}
-            </h2>
-            <p className="text-xs text-slate-400">
-              Assessed Tier: <span className="font-bold text-white">{activeLevelDef.name}</span> • Score: <span className="font-bold text-cyan-400">{score}/{activeQuestions.length}</span>
-            </p>
-          </div>
-
-          {/* Diagnostic Card */}
-          <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-3">
-            <p className="text-xs text-slate-300 leading-relaxed">
-              {result.summary}
-            </p>
-            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-cyan-300 flex items-center gap-2">
-              <Zap size={15} className="text-cyan-400 shrink-0" />
-              <span>{result.recommendationMsg}</span>
-            </div>
-          </div>
-
-          {/* Action CTAs */}
-          <div className="space-y-3">
-            <button
-              onClick={() => handleApplyPlacement(result.recommendedLevel)}
-              className="w-full py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase font-mono tracking-wider shadow-lg shadow-emerald-500/25 active:scale-95 transition-all flex items-center justify-center gap-2"
-            >
-              <span>Apply {result.recommendedName} ({result.recommendedLevel}) & Adapt Lessons</span>
-              <ArrowRight size={16} />
-            </button>
-
-            <button
-              onClick={() => {
-                setHasStartedQuiz(false);
-                setQuizFinished(false);
-              }}
-              className="w-full py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs transition-colors flex items-center justify-center gap-2"
-            >
-              <RotateCcw size={14} />
-              <span>Choose Another Level Quiz</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // STEP 2: Interactive Question Screen
-  const progressPercent = Math.round(((currentQuestionIndex + (isChecked ? 1 : 0)) / activeQuestions.length) * 100);
+  const optionLetters = ['A', 'B', 'C', 'D'];
+  const spokenTranslit =
+    isNonLatin && currentQ.spokenAudio ? getTransliteration(currentQ.spokenAudio, selectedDialect.id) : '';
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 bg-slate-950 text-slate-100 font-sans">
+    <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 bg-slate-950 text-slate-100 overflow-y-auto">
       <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-        {/* Header Bar */}
-        <div className="flex items-center justify-between text-xs font-mono pb-4 border-b border-slate-800 gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2">
-            <span className={`px-2.5 py-0.5 rounded-lg ${activeLevelDef.bgLight} ${activeLevelDef.color} font-bold text-[10px]`}>
-              {activeLevelDef.name} ({activeLevelDef.cefrCode})
-            </span>
-            <span className="text-slate-400">
-              Q{currentQuestionIndex + 1} of {activeQuestions.length}
+            <button
+              onClick={() => setStage('select_mode')}
+              className="text-xs font-bold text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              ← Change Tier
+            </button>
+            <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">
+              {selectedDialect.flag} {selectedDialect.dialect} • {activeTier.badge} ({activeTier.title})
             </span>
           </div>
 
           <div className="flex items-center gap-2">
             {isNonLatin && (
               <button
-                type="button"
-                onClick={() => setShowTransliteration(!showTransliteration)}
-                className={`px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold transition-all border flex items-center gap-1.5 ${
-                  showTransliteration
-                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                onClick={() => setShowPhonetics(!showPhonetics)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                  showPhonetics
+                    ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-400'
                 }`}
-                title="Toggle Franco-Arab / Romaji transliterations"
               >
-                <span>Aa Translit:</span>
-                <span className={showTransliteration ? 'text-cyan-400' : 'text-slate-500'}>
-                  {showTransliteration ? 'ON' : 'OFF'}
-                </span>
+                Phonetics: {showPhonetics ? 'ON' : 'OFF'}
               </button>
             )}
-            <span className="text-slate-400">{selectedDialect.flag} {selectedDialect.dialect}</span>
-            <span className="text-cyan-400 font-bold">{score} pts</span>
+            <button
+              onClick={() => startQuizAtTier(activeTierIdx)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-300 flex items-center gap-1 cursor-pointer"
+              title="Shuffle a new question order"
+            >
+              <RotateCcw size={12} /> Shuffle
+            </button>
+            <span className="text-xs text-slate-400 font-bold">
+              {currentIndex + 1} / {questions.length}
+            </span>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden p-0.5">
-          <div
-            className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-300"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
+        <div className="space-y-4">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950 border border-slate-800 text-[11px] font-bold text-cyan-400">
+            <Sparkles size={12} />
+            <span>{currentQ.context}</span>
+          </div>
 
-        {/* Question Title & Scenario */}
-        <div className="space-y-2">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-400 font-bold block">
-            Scenario: {currentQ.context}
-          </span>
-          <h2 className="text-lg sm:text-2xl font-black text-white leading-tight">
-            {currentQ.prompt}
-          </h2>
-        </div>
+          <h3 className="text-lg sm:text-xl font-black text-white leading-snug">{currentQ.prompt}</h3>
 
-        {/* Spoken Audio Demonstration Button */}
-        {currentQ.spokenAudio && (
-          <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                type="button"
-                onClick={() => playSpokenAudio(currentQ.spokenAudio!)}
-                className={`p-2.5 rounded-xl border transition-all shrink-0 ${
-                  isPlayingAudio
-                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 scale-105'
-                    : 'bg-slate-900 text-cyan-400 border-slate-800 hover:bg-slate-800'
-                }`}
-                title="Listen to native pronunciation"
-              >
-                <Volume2 size={16} className={isPlayingAudio ? 'animate-pulse' : ''} />
-              </button>
-              <div className="min-w-0">
-                <p dir={isArabic ? 'rtl' : 'ltr'} className={`text-xs font-bold text-white italic ${isArabic ? 'text-right' : ''}`}>
-                  "{currentQ.spokenAudio}"
-                </p>
-                {isNonLatin && showTransliteration && (
-                  <p className={`text-[11px] font-mono text-cyan-300 font-medium tracking-wide mt-0.5 ${isArabic ? 'text-right' : ''}`}>
-                    Phonetic: {getTransliteration(currentQ.spokenAudio, selectedDialect.id)}
-                  </p>
+          {currentQ.spokenAudio && (
+            <div className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-base font-bold text-emerald-300">{currentQ.spokenAudio}</p>
+                {isNonLatin && showPhonetics && spokenTranslit && (
+                  <p className="text-xs font-mono text-cyan-300/90">🔤 {spokenTranslit}</p>
                 )}
-                <span className="text-[10px] text-slate-500 font-mono">Native Pronunciation</span>
               </div>
+              <button
+                onClick={() => handlePlayAudio(currentQ.spokenAudio)}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-black shrink-0 transition-all cursor-pointer ${
+                  isPlayingAudio
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                    : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
+                }`}
+              >
+                <Volume2 size={16} className={isPlayingAudio ? 'animate-bounce' : ''} />
+                <span>{isPlayingAudio ? 'Speaking...' : 'Listen to Native Speaker'}</span>
+              </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Multiple Choice Options */}
-        <div className="grid grid-cols-1 gap-2.5">
-          {currentQ.options.map((opt, i) => {
-            const isSelected = selectedOptionIndex === i;
-            const isCorrect = i === currentQ.correctIndex;
-            const optTranslit = isNonLatin ? getTransliteration(opt, selectedDialect.id) : '';
-            const hasDistinctTranslit = optTranslit && optTranslit !== opt;
+        <div className="space-y-3">
+          {currentQ.options.map((opt, idx) => {
+            const optTranslit = isNonLatin && showPhonetics ? getTransliteration(opt, selectedDialect.id) : '';
+            const showOptTranslit = optTranslit && optTranslit.toLowerCase() !== opt.toLowerCase();
 
-            let btnStyle = 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700';
-            if (isChecked) {
-              if (isCorrect) {
-                btnStyle = 'bg-emerald-950/40 border-emerald-500 text-emerald-300 font-bold';
-              } else if (isSelected) {
-                btnStyle = 'bg-rose-950/40 border-rose-500 text-rose-300 font-bold';
+            let btnStyle = 'bg-slate-950/70 border-slate-800 hover:border-slate-600 text-slate-100';
+            if (isAnswered) {
+              if (idx === currentQ.correctIndex) {
+                btnStyle = 'bg-emerald-500/20 border-emerald-500 text-emerald-200 shadow-lg shadow-emerald-500/10';
+              } else if (idx === selectedOption) {
+                btnStyle = 'bg-rose-500/20 border-rose-500 text-rose-200';
+              } else {
+                btnStyle = 'bg-slate-950/30 border-slate-800/50 text-slate-500';
               }
             }
 
             return (
               <button
-                key={i}
-                disabled={isChecked}
-                onClick={() => handleSelectOption(i)}
-                className={`p-4 rounded-2xl border text-left text-xs sm:text-sm font-semibold transition-all flex items-center justify-between gap-3 ${btnStyle}`}
+                key={idx}
+                onClick={() => handleSelectOption(idx)}
+                disabled={isAnswered}
+                className={`w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${btnStyle}`}
               >
-                <div className="flex-1 min-w-0">
-                  <div dir={isArabic ? 'rtl' : 'ltr'} className={isArabic ? 'text-right' : ''}>
-                    {opt}
+                <div className="flex items-start gap-3">
+                  <span className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-black text-slate-300 shrink-0 mt-0.5">
+                    {optionLetters[idx] || idx + 1}
+                  </span>
+                  <div>
+                    <div className="text-sm sm:text-base font-bold leading-snug">{opt}</div>
+                    {showOptTranslit && (
+                      <div className="text-xs font-mono text-cyan-400/90 mt-1">🔤 {optTranslit}</div>
+                    )}
                   </div>
-                  {isNonLatin && showTransliteration && hasDistinctTranslit && (
-                    <div className={`text-[11px] font-mono text-cyan-300/90 font-medium mt-1 ${isArabic ? 'text-right' : ''}`}>
-                      {optTranslit}
-                    </div>
-                  )}
                 </div>
-                {isChecked && isCorrect && <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />}
-                {isChecked && isSelected && !isCorrect && <AlertCircle size={16} className="text-rose-400 shrink-0" />}
+                {isAnswered && idx === currentQ.correctIndex && (
+                  <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+                )}
+                {isAnswered && idx === selectedOption && idx !== currentQ.correctIndex && (
+                  <XCircle size={20} className="text-rose-400 shrink-0" />
+                )}
               </button>
             );
           })}
         </div>
 
-        {/* Immediate Explanation Drawer */}
-        {isChecked && (
-          <div className={`p-4 rounded-2xl border text-xs animate-in fade-in ${
-            selectedOptionIndex === currentQ.correctIndex
-              ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
-              : 'bg-amber-950/30 border-amber-500/40 text-amber-200'
-          }`}>
-            <span className="font-bold block mb-1">
-              {selectedOptionIndex === currentQ.correctIndex ? '✓ Correct!' : '💡 Cultural Explanation:'}
-            </span>
-            <p className="text-slate-300 leading-relaxed">{currentQ.explanation}</p>
-          </div>
-        )}
-
-        {/* Next Question / Skip */}
-        <div className="pt-2 flex items-center justify-between">
-          <button
-            onClick={() => {
-              setHasStartedQuiz(false);
-            }}
-            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            ← Change Level
-          </button>
-
-          {isChecked ? (
+        {isAnswered && (
+          <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="text-xs text-slate-300 leading-relaxed">
+              <span className="font-black text-emerald-400 uppercase tracking-wider block mb-0.5">
+                Cultural Breakdown:
+              </span>
+              {currentQ.explanation}
+            </div>
             <button
               onClick={handleNextQuestion}
-              className="px-6 py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs uppercase font-mono tracking-wider shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center gap-2"
+              className="px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-lg shadow-emerald-500/20"
             >
-              <span>{currentQuestionIndex + 1 < activeQuestions.length ? 'Next Question' : 'View Placement Results'}</span>
+              <span>{currentIndex + 1 < questions.length ? 'Next Question' : 'See Placement Result'}</span>
               <ArrowRight size={15} />
             </button>
-          ) : null}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

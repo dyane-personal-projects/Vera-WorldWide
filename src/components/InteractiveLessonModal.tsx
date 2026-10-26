@@ -1,3 +1,4 @@
+import { playNativeAudio, stopAllAudio } from '../services/gemini';
 import React, { useState, useEffect } from 'react';
 import {
   X,

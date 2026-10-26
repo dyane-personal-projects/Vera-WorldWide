@@ -7,7 +7,7 @@ const apiKey =
 
 let aiClient: GoogleGenAI | null = null;
 
-if (apiKey) {
+if (apiKey && !apiKey.startsWith('AQ.')) {
   try {
     aiClient = new GoogleGenAI({ apiKey });
   } catch (err) {
@@ -16,8 +16,6 @@ if (apiKey) {
 }
 
 export type StudioVoiceName = 'Puck' | 'Kore' | 'Charon' | 'Fenrir' | 'Zephyr';
-
-// Strictly separated by gender so a male teacher NEVER speaks with a woman's voice!
 export const MALE_STUDIO_VOICES: StudioVoiceName[] = ['Puck', 'Charon', 'Fenrir'];
 export const FEMALE_STUDIO_VOICES: StudioVoiceName[] = ['Kore', 'Zephyr'];
 
@@ -54,6 +52,8 @@ export function recordPersonalShadowGap(dialectName: string, gap?: string): void
   } catch {}
 }
 
+const teacherTurnTracker: Record<string, number> = {};
+
 export async function generateTutorReply(params: {
   userMessage: string;
   dialectName: string;
@@ -64,50 +64,21 @@ export async function generateTutorReply(params: {
 }): Promise<TutorResponse> {
   const { userMessage, dialectName, persona, culturalNote, level = 'A1', chatHistory } = params;
 
-  const priorShadowGaps = getPersonalShadowGaps(dialectName);
-  const shadowContext =
-    priorShadowGaps.length > 0
-      ? `Past learner points to gently reinforce: ${priorShadowGaps.join(' | ')}`
-      : 'First session — observe how the learner phrases things and teach them naturally.';
-
-  const levelPedagogyMap = {
-    A1: `Student is a Beginner (A1). Speak 1-2 short, warm, everyday sentences in ${dialectName}. In your "feedback" note, talk directly to the student in the first person ("I...") like a real human tutor explaining what your words mean, how locals in your city actually pronounce them, and give them 1 specific phrase to try saying back to you next.`,
-    A2: `Student is Elementary (A2). Use practical daily sentences in ${dialectName} (cafés, taxis, greetings). In your first-person "feedback" note, teach them a shortcut or street word locals use instead of textbook language.`,
-    B1: `Student is Intermediate (B1). Keep a natural local conversation going in ${dialectName}, introducing 1 authentic regional expression and explaining its cultural vibe in first-person in "feedback".`,
-    B2: `Student is Upper-Intermediate (B2). Speak with authentic native cadence, local humor, and contractions in ${dialectName}. Coach them in first-person on sounding 100% like a local.`,
-    C1: `Student is Mastery (C1). Converse at full local street speed with deep cultural idioms and proverbs in ${dialectName}.`
-  };
-
-  const levelDirective = levelPedagogyMap[level] || levelPedagogyMap.A1;
-
-  const systemInstruction = `You are a real, living human language teacher from the country/city of "${dialectName}" having a live 1-on-1 session with your student.
+  const systemInstruction = `You are a real, living human language teacher from "${dialectName}" teaching a 1-on-1 session.
 Your identity: ${persona}.
-Cultural focus: ${culturalNote || 'How real people actually speak on the street, in cafés, and with friends'}.
-Teaching approach for this student: ${levelDirective}
-${shadowContext}
+Cultural focus: ${culturalNote || 'How locals actually speak in daily life'}.
+Student Level: ${level}.
 
-STRICT RULES SO YOU NEVER SOUND LIKE AN AI:
-1. NEVER mention AI, bots, algorithms, or language models. You are a real person living in your city teaching your native dialect.
-2. Your "reply" field is what you SPEAK OUT LOUD in ${dialectName}. It MUST be written 100% in the authentic native script of ${dialectName} (Arabic script for Moroccan Darija / Egyptian Masri, Japanese script for Japanese, Spanish for Mexican/Colombian, French for Parisian, Portuguese for Carioca). Do NOT put English or parenthetical translations inside "reply" so the voice engine only speaks pure ${dialectName}.
-3. In "englishTranslation", provide the natural English meaning of what you just said.
-4. In "feedback", speak directly to the student in FIRST PERSON ("Here in Casablanca, we say...", "I loved how you said...", "Try replying to me with...") — teaching them how people in your country actually talk!
-5. In "rephraseSuggestion", show how a native local in your city would phrase the student's message naturally.
-6. Provide "slangTip" and "slangMeaning" with a real local word or phrase from your city.
-7. Provide "suggestedReplies": 3 natural responses in ${dialectName} (native script) that the student can say back to you right now.
+RULES:
+1. Never mention AI or bots. You are a real person living in your country teaching your native dialect.
+2. "reply" MUST be 100% in the native script of ${dialectName} (what you speak aloud).
+3. "englishTranslation" is the natural English meaning of your spoken reply.
+4. "feedback" is your 1st-person coaching note ("Here in my city we say...", "Try saying...").
+5. "rephraseSuggestion" shows how a local would phrase what the student said.
+6. "slangTip" and "slangMeaning" teach 1 real local expression.
+7. "suggestedReplies" gives 3 natural replies in ${dialectName} native script.
 
-Return strictly valid JSON:
-{
-  "reply": "Your spoken words in ${dialectName} native script",
-  "englishTranslation": "Natural English meaning",
-  "feedback": "First-person personal teaching note from you to the student",
-  "rephraseSuggestion": "How a local in your city would say the student's thought",
-  "fluencyScore": 93,
-  "recommendedSpeechRate": 0.95,
-  "shadowTargetGap": "Short note on vocab/grammar to remember",
-  "slangTip": "Local word or phrase",
-  "slangMeaning": "How locals use it",
-  "suggestedReplies": ["Reply 1", "Reply 2", "Reply 3"]
-}`;
+Return strictly JSON with keys: reply, englishTranslation, feedback, rephraseSuggestion, fluencyScore, slangTip, slangMeaning, suggestedReplies.`;
 
   if (aiClient) {
     try {
@@ -115,11 +86,7 @@ Return strictly valid JSON:
         role: msg.role === 'user' ? 'user' : 'model',
         parts: [{ text: msg.content }]
       }));
-
-      formattedHistory.push({
-        role: 'user',
-        parts: [{ text: userMessage }]
-      });
+      formattedHistory.push({ role: 'user', parts: [{ text: userMessage }] });
 
       const response = await aiClient.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -133,118 +100,231 @@ Return strictly valid JSON:
 
       const text = response.text?.trim();
       if (text) {
-        try {
-          const parsed = JSON.parse(text);
-          if (parsed.shadowTargetGap) {
-            recordPersonalShadowGap(dialectName, parsed.shadowTargetGap);
-          }
-          return {
-            reply: parsed.reply || text,
-            englishTranslation: parsed.englishTranslation || 'Natural response in the local dialect.',
-            feedback: parsed.feedback || 'Great rhythm! Notice how we link these words together in everyday speech.',
-            rephraseSuggestion: parsed.rephraseSuggestion,
-            fluencyScore: typeof parsed.fluencyScore === 'number' ? parsed.fluencyScore : 92,
-            recommendedSpeechRate: typeof parsed.recommendedSpeechRate === 'number' ? parsed.recommendedSpeechRate : 1.0,
-            shadowTargetGap: parsed.shadowTargetGap,
-            slangTip: parsed.slangTip,
-            slangMeaning: parsed.slangMeaning,
-            suggestedReplies: Array.isArray(parsed.suggestedReplies) ? parsed.suggestedReplies : undefined
-          };
-        } catch {
-          return {
-            reply: text,
-            englishTranslation: 'Conversational response from your local teacher.',
-            feedback: 'Keep going—your rhythm is sounding more local every turn!',
-            fluencyScore: 90
-          };
-        }
+        const parsed = JSON.parse(text);
+        return {
+          reply: parsed.reply || text,
+          englishTranslation: parsed.englishTranslation || '',
+          feedback: parsed.feedback || '',
+          rephraseSuggestion: parsed.rephraseSuggestion,
+          fluencyScore: typeof parsed.fluencyScore === 'number' ? parsed.fluencyScore : 94,
+          slangTip: parsed.slangTip,
+          slangMeaning: parsed.slangMeaning,
+          suggestedReplies: Array.isArray(parsed.suggestedReplies) ? parsed.suggestedReplies : undefined
+        };
       }
-    } catch (err) {
-      console.warn('Gemini generation error, using rich human teacher fallback:', err);
-    }
+    } catch {}
   }
 
-  return getContextualDialectFallback(dialectName, userMessage, level);
+  return getContextualDialectFallback(dialectName, userMessage, level, chatHistory.length);
 }
 
-export function getContextualDialectFallback(dialectName: string, message: string, level: string = 'A1'): TutorResponse {
+export function getContextualDialectFallback(
+  dialectName: string,
+  message: string,
+  level: string = 'A1',
+  historyLength: number = 0
+): TutorResponse {
+  const key = `${dialectName}_${level}`;
+  const currentTurn = teacherTurnTracker[key] ?? Math.floor(historyLength / 2);
+  teacherTurnTracker[key] = currentTurn + 1;
+
   if (dialectName.includes('Moroccan') || dialectName.includes('Darija')) {
-    return {
-      reply: 'تبارك الله عليك! الهضرة ديالك زوينة بزاف. هنا في المغرب كنقولو "كلشي مزيان" ولا "صافي" بزاف في الهضرة ديال كل نهار. يلاه نجربو نطلبو أتاي مشحر في القهوة؟',
-      englishTranslation: 'Blessings on you! Your phrasing is really nice. Here in Morocco we say "Kulshi mezyan" (everything is good) or "Safi" (okay/done) all the time in daily speech. Shall we practice ordering brewed mint tea at a café?',
-      feedback: 'In Morocco, when you want to say "please", we never use the textbook word — we say "عافاك" (3afak). Try using "3afak" in your next reply to me!',
-      rephraseSuggestion: 'واحد أتاي مشحر بالنعناع عافاك أ خويا!',
-      fluencyScore: 95,
-      slangTip: 'عافاك (3afak)',
-      slangMeaning: 'The everyday Moroccan word for "Please" — used in cafés, taxis, and with friends.',
-      suggestedReplies: ['واحد أتاي مشحر بالنعناع عافاك!', 'واخا، يلاه نطلبو في القهوة دابا!', 'شكراً بزاف، الله يرحم الوالدين!']
-    };
+    const lessons: TutorResponse[] = [
+      {
+        reply: 'تبارك الله عليك! نطقك زوين بزاف. هنا في المغرب ملي كنسولو شي واحد "لباس عليك؟"، كنزيدو معاها "أش كتعاود؟" يعني شنو الجديد عندك. يلاه جرب قول ليا: كلشي مزيان، ما كاين غير الخير!',
+        englishTranslation: 'Blessings on you! Your pronunciation is really good. Here in Morocco, after we ask someone "Labas 3lik?", we add "Ash kat3awed?" which means "What\'s new with you?". Try saying back to me: "Kulshi mezyan, ma kayn ghir l-khir!" (Everything is good, only good things!)',
+        feedback: 'In Morocco we say "مزيان" (Mezyan) for "good/great" instead of textbook Arabic "Jayyid". Try clicking or saying one of the replies below!',
+        rephraseSuggestion: 'كلشي مزيان الحمد لله، ما كاين غير الخير!',
+        fluencyScore: 95,
+        slangTip: 'أش كتعاود؟ (Ash kat3awed?)',
+        slangMeaning: 'How Moroccans say "What\'s new with you / What have you been up to?"',
+        suggestedReplies: [
+          'كلشي مزيان، ما كاين غير الخير!',
+          'الحمد لله، غير مع الخدمة وصافي!',
+          'لباس الحمد لله، وأنت أش كتعاود؟'
+        ]
+      },
+      {
+        reply: 'واعر بزاف! دابا أجي نتعلمو أهم كلمة في المغرب كامل: "عافاك" هي من فضلك، و"بزاف" هي كثيراً. إلى جلستي في القهوة وبغيتي أتاي، شنو غادي تقول للنادل؟',
+        englishTranslation: 'Awesome! Now let\'s learn the most important words in all of Morocco: "3afak" means "please", and "Bezzaf" means "a lot / very much". If you sit at a café and want mint tea, what will you say to the waiter?',
+        feedback: 'In a Moroccan café, ordering mint tea with fresh mint is "واحد أتاي بالنعناع عافاك" (Wa7ed atay b-n-na3na3 3afak). Give it a try!',
+        rephraseSuggestion: 'واحد أتاي مشحر بالنعناع عافاك أ خويا!',
+        fluencyScore: 96,
+        slangTip: 'عافاك (3afak)',
+        slangMeaning: 'The universal Moroccan word for "Please" — used with waiters, taxi drivers, and friends.',
+        suggestedReplies: [
+          'واحد أتاي مشحر بالنعناع عافاك!',
+          'عطيني قهوة نص نص عافاك أ خويا!',
+          'شكراً بزاف على هاد الدرس الزوين!'
+        ]
+      },
+      {
+        reply: 'يا سلام! راك غادي دقة دقة بحال ولد البلاد. دابا تخيل معايا بغيتي تشد طاكسي صغير في كازا ولا الرباط، أول حاجة كتقول للشيفور هي: "السلام الشريف، خدم الكونتور عافاك!"',
+        englishTranslation: 'Bravo! You are progressing step by step like a true local. Now imagine you want to hail a Petit Taxi in Casa or Rabat—the first thing you tell the driver is: "Salam Shrif, khaddem l-compteur 3afak!" (Hello respected sir, turn on the meter please!)',
+        feedback: 'Addressing a taxi driver as "الشريف" (Shrif) or "المعلم" (M3allem) immediately earns their respect in Morocco. Try telling me where you want to go!',
+        rephraseSuggestion: 'السلام الشريف، ديني للمدينة القديمة عافاك!',
+        fluencyScore: 94,
+        slangTip: 'حطني غير هنا (7attni ghir hna)',
+        slangMeaning: '"Drop me off right here" — how you tell a Moroccan taxi driver to pull over.',
+        suggestedReplies: [
+          'السلام الشريف، ديني للمدينة القديمة عافاك!',
+          'حطني غير هنا في القنت عافاك أ المعلم!',
+          'شحال الحساب ديال الطاكسي عافاك؟'
+        ]
+      },
+      {
+        reply: 'الله يعطيك الصحة! دابا وصلنا للمدينة القديمة ودخلنا للسوق. في المغرب، ملي كتعجبك شي سلعة وكتبغي تنقص الثمن بأدب، كتقول للمعلم: "السلعة واعرة تبارك الله، دير معايا شي ثمن زوين!"',
+        englishTranslation: 'May God give you health! Now we arrived at the Old Medina and entered the souk. In Morocco, when you like an item and want to lower the price politely, you tell the craftsman: "S-sel3a wa3ra tbarkallah, dir m3aya shi taman zwin!" (The merchandise is awesome, give me a nice price!)',
+        feedback: 'Always praise the artisan\'s work first ("واعرة تبارك الله") and then ask for a friendly price ("ثمن زوين"). Try bargaining with me!',
+        rephraseSuggestion: 'السلعة واعرة تبارك الله، دير معايا ثمن زوين أ المعلم!',
+        fluencyScore: 96,
+        slangTip: 'شحال آخر ثمن؟ (Sh7al akher taman?)',
+        slangMeaning: '"What is your best final price?" — the golden phrase in Moroccan souks.',
+        suggestedReplies: [
+          'السلعة واعرة تبارك الله، دير معايا ثمن زوين!',
+          'شحال آخر ثمن أ المعلم عافاك؟',
+          'صافي اتفقنا، الله يرحم الوالدين!'
+        ]
+      }
+    ];
+    return lessons[currentTurn % lessons.length];
   }
+
   if (dialectName.includes('Egyptian') || dialectName.includes('Masri') || dialectName.includes('Arabic')) {
-    return {
-      reply: 'الله ينور عليك! كلامك بالمصري طبيعي وجميل جداً. إحنا في القاهرة بنقول "كله تمام" و"يا باشا" عشان نفتح كلام بود مع أي حد. تحب نطلب شاي على القهوة؟',
-      englishTranslation: 'Bravo to you! Your Egyptian phrasing is super natural and lovely. Here in Cairo we say "Kollo tamam" and "Ya basha" to open warm conversations with anyone. Want to order tea at the ahwa?',
-      feedback: 'Remember that in Cairo we pronounce the letter ج as a hard "G" (so جميل is "Gameel"). Try replying to me with one of the phrases below!',
-      rephraseSuggestion: 'كله تمام يا باشا، يلا نطلب شاي بالنعناع!',
-      fluencyScore: 95,
-      slangTip: 'في الخمسينة (Fel-khamseenah)',
-      slangMeaning: 'Traditional Cairo way of ordering strong black tea in a classic small glass.',
-      suggestedReplies: ['واحد شاي في الخمسينة بالنعناع لو سمحت!', 'كله تمام الحمد لله يا باشا!', 'علمني كلمات أكتر بنقولها كل يوم في مصر']
-    };
+    const lessons: TutorResponse[] = [
+      {
+        reply: 'الله ينور عليك! نطقك جميل جداً. بص يا صاحبي، إحنا في مصر لما حد يسألك "عامل إيه؟" بنرد نقول "كله تمام الحمد لله" أو "زي الفل!". جرب تقولهالي كده!',
+        englishTranslation: 'Bravo to you! Your pronunciation is super nice. Look my friend, here in Egypt when someone asks you "3amel eh?" (How are you doing?), we reply "Kollo tamam el-7amdulillah" or "Zay el-fol!" (Like jasmine / fantastic!). Try saying that back to me!',
+        feedback: 'In Cairo we pronounce ج as a hard "G" and ق as a quick glottal stop. Try clicking or speaking one of these natural Egyptian replies!',
+        rephraseSuggestion: 'كله تمام الحمد لله، أنا زي الفل يا باشا!',
+        fluencyScore: 95,
+        slangTip: 'زي الفل (Zay el-fol)',
+        slangMeaning: 'Literally "Like jasmine blossoms" — how Egyptians say "Fantastic / Spot on!"',
+        suggestedReplies: [
+          'كله تمام الحمد لله، زي الفل!',
+          'أنا كويس الحمد لله، وأنت عامل إيه؟',
+          'منور يا باشا، يومك جميل!'
+        ]
+      },
+      {
+        reply: 'يا عيني على الحلاوة! كده أنت بدات تتكلم مصري صح. دلوقتي لو قعدنا على قهوة بلدي في وسط البلد، تحب تطلب "شاي في الخمسينة بالنعناع" ولا "قهوة مظبوط"؟',
+        englishTranslation: 'Love it! Now you are really starting to speak authentic Egyptian. Right now if we sit at a traditional ahwa in Downtown Cairo, would you like to order "Shay fel-khamseenah b-el-na3na3" (mint tea in a small glass) or "2ahwa mazboot" (medium-sweet Turkish coffee)?',
+        feedback: 'Notice the word "دلوقتي" (Delwa2ti) — that is how we say "now" in Egypt instead of textbook "Al-aan".',
+        rephraseSuggestion: 'واحد شاي في الخمسينة بالنعناع لو سمحت يا ريس!',
+        fluencyScore: 96,
+        slangTip: 'دلوقتي (Delwa2ti)',
+        slangMeaning: 'Right now (the everyday Egyptian word for "now").',
+        suggestedReplies: [
+          'واحد شاي في الخمسينة بالنعناع لو سمحت!',
+          'أنا أحب أشرب قهوة مظبوط يا باشا!',
+          'قعدة القهوة في مصر ليها طعم تاني!'
+        ]
+      }
+    ];
+    return lessons[currentTurn % lessons.length];
   }
+
   if (dialectName.includes('French') || dialectName.includes('Paris')) {
-    return {
-      reply: "Franchement, c'est super naturel ! Ici à Paris, à l'oral, on enlève presque toujours le « ne » et on dit « t'inquiète » ou « ça roule ». On continue comme si on était en terrasse ?",
-      englishTranslation: "Honestly, that's super natural! Here in Paris, when speaking, we almost always drop the 'ne' and say 't'inquiète' or 'ça roule'. Shall we keep going as if we were on a café terrace?",
-      feedback: 'When Parisians speak at normal speed, "Je ne sais pas" becomes "J\'sais pas" (pronounced "Chépa"). Try replying to me with a casual terrace phrase!',
-      rephraseSuggestion: "Carrément, on se prend un petit café serré !",
-      fluencyScore: 94,
-      slangTip: "T'inquiète",
-      slangMeaning: 'Short for "Ne t\'inquiète pas" — used non-stop in France for "Don\'t worry / no problem".',
-      suggestedReplies: ['Carrément, un café serré s’il vous plaît !', 'Ça roule, j’adore parler comme un vrai Parisien !', 'Qu’est-ce que tu me conseilles de visiter aujourd’hui ?']
-    };
+    const lessons: TutorResponse[] = [
+      {
+        reply: "Super ! Tu vois, ici à Paris, dans la vie de tous les jours, on ne dit presque jamais « Je ne sais pas » — on enlève le « ne » et on dit « J'sais pas » ou « T'inquiète ! ». Si on s'installe en terrasse, tu prends quoi à boire ?",
+        englishTranslation: "Great! You see, here in Paris in everyday life, we almost never say textbook 'Je ne sais pas' — we drop the 'ne' and say 'J'sais pas' or 'T'inquiète!' (Don't worry!). If we sit on a café terrace, what are you having to drink?",
+        feedback: 'In Paris, ordering "Un café serré" or "Un allongé" with "s\'il vous plaît" is how every morning starts. Try ordering with me!',
+        rephraseSuggestion: "Je prends un petit café serré en terrasse, s'il vous plaît !",
+        fluencyScore: 95,
+        slangTip: "T'inquiète !",
+        slangMeaning: "Short for 'Ne t'inquiète pas' — Parisians use it constantly for 'Don't worry / No problem!'",
+        suggestedReplies: [
+          "Je prends un petit café serré, s'il vous plaît !",
+          "Carrément, un café et un croissant au beurre !",
+          "T'inquiète, c'est moi qui invite aujourd'hui !"
+        ]
+      },
+      {
+        reply: "Franchement, c'est nickel ! Autre petit secret de Parisien : quand quelque chose est vraiment génial, on dit « C'est carrément ouf ! » ou « Ça déchire ! ». Et pour demander la note au serveur, on dit simplement : « L'addition, s'il vous plaît ! »",
+        englishTranslation: "Honestly, that's spot on! Another little Parisian secret: when something is really awesome, we say 'C'est carrément ouf!' or 'Ça déchire!'. And to ask the waiter for the check, we simply say: 'L'addition, s'il vous plaît!'",
+        feedback: 'Just catch the server\'s eye with a polite "Excusez-moi, l\'addition s\'il vous plaît !".',
+        rephraseSuggestion: "Excusez-moi monsieur, l'addition s'il vous plaît !",
+        fluencyScore: 96,
+        slangTip: 'Nickel',
+        slangMeaning: 'Spotless / Perfect / Works for me!',
+        suggestedReplies: [
+          "Excusez-moi, l'addition s'il vous plaît !",
+          "C'est carrément ouf ce quartier de Paris !",
+          "Nickel, merci pour ces vrais conseils de Parisien !"
+        ]
+      }
+    ];
+    return lessons[currentTurn % lessons.length];
   }
+
   if (dialectName.includes('Japanese') || dialectName.includes('Tokyo')) {
-    return {
-      reply: 'すごく自然な日本語だね！東京では友達と話すとき、語尾に「ね」や「よ」をつけると一気に親しみやすくなるよ。次はカフェや居酒屋の会話をしてみようか？',
-      englishTranslation: "That's super natural Japanese! In Tokyo, when talking with friends, adding 'ne' or 'yo' at the end of sentences immediately makes you sound warm and approachable. Shall we try a café or izakaya conversation next?",
-      feedback: 'In real Tokyo conversations, we use "それな！" (Sore na! = Totally/Exactly!) all the time to show we agree with a friend. Try using it with me!',
-      rephraseSuggestion: 'いいね！ぜひやってみようよ！',
-      fluencyScore: 95,
-      slangTip: 'それな (Sore na)',
-      slangMeaning: 'The #1 natural Tokyo expression for "Totally / I completely agree!"',
-      suggestedReplies: ['それな！さっそく練習しよう！', 'とりあえず生ビールお願いします！', 'おすすめのカフェメニューは何？']
-    };
+    const lessons: TutorResponse[] = [
+      {
+        reply: 'すごくいい感じだね！東京で友達と話すときは、教科書の「そうです」じゃなくて「それな！」とか「ほんとそれ！」って言うと、ぐっと距離が縮まるよ。今度カフェに行くとしたら、何を頼みたい？',
+        englishTranslation: "That feels super natural! In Tokyo, when talking with friends, instead of textbook 'Sou desu', saying 'Sore na!' or 'Honto sore!' (Totally / So true!) brings you much closer. If we go to a café next, what would you like to order?",
+        feedback: 'To order naturally anywhere in Japan, just say "[Item] をください (o kudasai)" or "[Item] をお願いします (o onegaishimasu)"!',
+        rephraseSuggestion: 'それな！アイスコーヒーを一つお願いします！',
+        fluencyScore: 95,
+        slangTip: 'それな (Sore na)',
+        slangMeaning: 'Totally! / Exactly! (The #1 casual agreement phrase in Tokyo).',
+        suggestedReplies: [
+          'それな！コーヒーを一つお願いします！',
+          '抹茶ラテとケーキをください！',
+          '東京のカフェってすごくおしゃれだね！'
+        ]
+      },
+      {
+        reply: '完璧だよ！あと、日本のレストランやカフェでお会計をお願いするときは、手で小さくバッテン（×）を作るか、「すみません、お会計お願いします！」って言えばバッチリ通じるよ！',
+        englishTranslation: "Spot on! Also, when asking for the bill at a Japanese restaurant or café, making a tiny 'X' with your index fingers or saying 'Sumimasen, o-kaikei onegaishimasu!' works 100% of the time!",
+        feedback: 'When leaving the restaurant after paying, say "ごちそうさまでした！" (Gochisousama deshita! = Thank you for the meal!).',
+        rephraseSuggestion: 'すみません、お会計お願いします！ごちそうさまでした！',
+        fluencyScore: 96,
+        slangTip: 'お会計お願いします (O-kaikei onegaishimasu)',
+        slangMeaning: 'The check, please!',
+        suggestedReplies: [
+          'すみません、お会計お願いします！',
+          'ごちそうさまでした！すごく美味しかったです！',
+          '今日もわかりやすいレッスンをありがとう！'
+        ]
+      }
+    ];
+    return lessons[currentTurn % lessons.length];
   }
+
   if (dialectName.includes('Portuguese') || dialectName.includes('Carioca')) {
     return {
-      reply: 'Mandou muito bem! Aqui no Rio a gente fala "tá" em vez de "está" o tempo todo, deixa a conversa muito mais leve. Bora pedir uma água de coco na praia?',
-      englishTranslation: 'You did great! Here in Rio we say "tá" instead of "está" all the time, it makes the conversation much lighter. Shall we order a coconut water on the beach?',
-      feedback: 'To sound like a true Carioca from Rio, use "Bora!" whenever you want to say "Let\'s go / Let\'s do it!". Try it in your next message!',
-      rephraseSuggestion: 'Bora! Manda uma água de coco bem gelada!',
-      fluencyScore: 94,
-      slangTip: 'Bora!',
-      slangMeaning: 'Short for "Vamos embora" — the universal Brazilian word for "Let\'s go / I\'m in!"',
-      suggestedReplies: ['Bora! Manda uma água de coco bem gelada!', 'Tudo tranquilo por aqui, tamo junto!', 'Me ensina mais gírias do Rio de Janeiro!']
+      reply: 'Mandou super bem! Olha só, aqui no Rio de Janeiro a gente quase não fala "está bem" — na rua todo mundo diz "Tá tranquilo!", "Beleza!" ou "Fechou!". Se a gente for na praia de Ipanema agora, o que você pede no quiosque?',
+      englishTranslation: 'You did super well! Look, here in Rio de Janeiro we almost never say formal "está bem" — on the street everyone says "Tá tranquilo!", "Beleza!" or "Fechou!" (Deal!). If we head to Ipanema beach right now, what are you ordering at the kiosk?',
+      feedback: 'In Rio, calling the kiosk attendant "chefe" or "meu parceiro" ("Manda uma água de coco gelada, chefe!") gets you a huge smile right away!',
+      rephraseSuggestion: 'Fechou! Manda uma água de coco bem gelada, chefe!',
+      fluencyScore: 95,
+      slangTip: 'Fechou!',
+      slangMeaning: "Deal! / Sounds good! / It's a plan!",
+      suggestedReplies: [
+        'Fechou! Manda uma água de coco bem gelada, chefe!',
+        'Quero um açaí caprichado na praia!',
+        'Tá tranquilo, tô adorando aprender o jeito carioca!'
+      ]
     };
   }
+
   return {
-    reply: '¡Qué bien te escuchas! Aquí en la calle casi nunca hablamos como en los libros; usamos palabras como "ahorita", "me late" y "porfa" todo el día. ¿Practicamos pedir en una taquería?',
-    englishTranslation: 'You sound great! Here on the street we almost never talk like textbooks; we use words like "ahorita", "me late", and "porfa" all day. Shall we practice ordering at a taquería?',
-    feedback: 'Instead of saying "Estoy de acuerdo", locals say "¡Me late!" (I like that idea / sounds good to me). Try using "¡Me late!" in your next reply!',
-    rephraseSuggestion: '¡Me late! Me das dos de pastor con todo, porfa.',
-    fluencyScore: 94,
-    slangTip: 'Me late',
-    slangMeaning: 'Literally "it beats (my heart)" — everyday expression for "I like it / I\'m down!"',
-    suggestedReplies: ['¡Me late! Dos tacos al pastor con todo, porfa', '¡Órale, qué buena onda! Sigamos practicando', '¿Qué salsa pica más, la verde o la roja?']
+    reply: '¡Órale, te escuchaste súper natural! Mira, aquí en México en vez de decir "sí, estoy de acuerdo", decimos "¡Me late!" o "¡Órale va!". Por ejemplo, si te invito por unos tacos al pastor ahorita, ¿qué me contestas?',
+    englishTranslation: 'Right on, you sounded super natural! Look, here in Mexico instead of textbook "sí, estoy de acuerdo", we say "¡Me late!" (I like that!) or "¡Órale va!" (Let\'s do it!). If I invite you for some tacos al pastor right now, what do you answer me?',
+    feedback: 'Using "¡Me late!" and "porfa" (short for por favor) immediately makes you sound like a local in Mexico City.',
+    rephraseSuggestion: '¡Me late un buen! Vamos por unos tacos al pastor.',
+    fluencyScore: 95,
+    slangTip: '¡Me late!',
+    slangMeaning: 'Literally "It beats (my heart)" — Mexican Spanish for "I like that idea / I\'m down!"',
+    suggestedReplies: [
+      '¡Me late un buen! Vamos por unos tacos al pastor',
+      '¡Órale va! Me pido tres con todo, porfa',
+      '¿Qué salsa pica menos en la taquería?'
+    ]
   };
 }
 
-// ============================================================================
-// GENDER-LOCKED 24kHz STUDIO NEURAL VOICE ENGINE
-// ============================================================================
-
-const audioCache = new Map<string, string>();
 let currentActiveAudio: HTMLAudioElement | null = null;
 
 export function cleanTextForSpeech(rawText: string): string {
@@ -254,94 +334,6 @@ export function cleanTextForSpeech(rawText: string): string {
     .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F100}-\u{1F1FF}]/gu, '')
     .replace(/[«»""''‹›*_~`#]/g, '')
     .trim();
-}
-
-function pcmBase64ToWavDataUri(base64Pcm: string, sampleRate = 24000): string {
-  const binaryString = atob(base64Pcm);
-  const pcmLength = binaryString.length;
-  const wavBuffer = new ArrayBuffer(44 + pcmLength);
-  const view = new DataView(wavBuffer);
-  const writeString = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + pcmLength, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeString(36, 'data');
-  view.setUint32(40, pcmLength, true);
-
-  const uint8 = new Uint8Array(wavBuffer);
-  for (let i = 0; i < pcmLength; i++) uint8[44 + i] = binaryString.charCodeAt(i);
-
-  let binaryWav = '';
-  const chunkSize = 8192;
-  for (let i = 0; i < uint8.length; i += chunkSize) {
-    binaryWav += String.fromCharCode.apply(null, Array.from(uint8.subarray(i, i + chunkSize)));
-  }
-  return `data:audio/wav;base64,${btoa(binaryWav)}`;
-}
-
-function getValidatedVoiceForGender(voiceName?: StudioVoiceName, voiceGender: 'male' | 'female' = 'male'): StudioVoiceName {
-  if (voiceGender === 'male') {
-    if (voiceName && MALE_STUDIO_VOICES.includes(voiceName)) return voiceName;
-    return 'Puck';
-  } else {
-    if (voiceName && FEMALE_STUDIO_VOICES.includes(voiceName)) return voiceName;
-    return 'Kore';
-  }
-}
-
-export async function generateNativeSpeechAudio(params: {
-  text: string;
-  dialectId?: string;
-  voiceName?: StudioVoiceName;
-  voiceGender?: 'male' | 'female';
-}): Promise<string | null> {
-  const { text, dialectId = 'es-MX', voiceGender = 'male' } = params;
-  const validatedVoice = getValidatedVoiceForGender(params.voiceName, voiceGender);
-  const clean = cleanTextForSpeech(text);
-  if (!clean) return null;
-
-  const cacheKey = `${validatedVoice}_${voiceGender}_${dialectId}_${clean}`;
-  if (audioCache.has(cacheKey)) return audioCache.get(cacheKey)!;
-  if (!aiClient) return null;
-
-  try {
-    const response = await aiClient.models.generateContent({
-      model: 'gemini-2.5-flash-preview-tts',
-      contents: [{ parts: [{ text: clean }] }],
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: validatedVoice }
-          }
-        }
-      }
-    });
-
-    const inlineData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-    const audioBase64 = inlineData?.data;
-    if (audioBase64) {
-      const mimeType = inlineData?.mimeType || '';
-      const dataUri = mimeType.includes('wav')
-        ? `data:audio/wav;base64,${audioBase64}`
-        : pcmBase64ToWavDataUri(audioBase64, 24000);
-      audioCache.set(cacheKey, dataUri);
-      return dataUri;
-    }
-  } catch (err) {
-    console.warn('Gemini Neural TTS fallback:', err);
-  }
-  return null;
 }
 
 export function stopAllAudio(): void {
@@ -354,33 +346,17 @@ export function stopAllAudio(): void {
   }
 }
 
-function findGenderMatchedOSVoice(
-  dialectId: string,
-  voices: SpeechSynthesisVoice[],
-  voiceGender: 'male' | 'female'
-): SpeechSynthesisVoice | null {
-  if (!voices || voices.length === 0) return null;
-  const prefix = dialectId.split('-')[0].toLowerCase();
-  const langVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(prefix));
-  if (langVoices.length === 0) return null;
-
-  const maleKeywords = ['maged', 'tarik', 'naayf', 'jorge', 'juan', 'carlos', 'diego', 'raul', 'thomas', 'daniel', 'otoya', 'hattori', 'felipe', 'luca', 'male'];
-  const femaleKeywords = ['laila', 'salma', 'mariam', 'paulina', 'monica', 'angelica', 'amelie', 'audrey', 'marie', 'kyoko', 'o-ren', 'haruka', 'luciana', 'female'];
-
-  const targetKeywords = voiceGender === 'male' ? maleKeywords : femaleKeywords;
-  const oppositeKeywords = voiceGender === 'male' ? femaleKeywords : maleKeywords;
-
-  // 1. Explicit gender keyword match in the target language
-  const explicitMatch = langVoices.find((v) =>
-    targetKeywords.some((kw) => v.name.toLowerCase().includes(kw))
-  );
-  if (explicitMatch) return explicitMatch;
-
-  // 2. Voice in the target language that does NOT match the opposite gender
-  const nonOppositeMatch = langVoices.find(
-    (v) => !oppositeKeywords.some((kw) => v.name.toLowerCase().includes(kw))
-  );
-  return nonOppositeMatch || langVoices[0];
+export async function generateNativeSpeechAudio(params: {
+  text: string;
+  dialectId?: string;
+  voiceName?: StudioVoiceName;
+  voiceGender?: 'male' | 'female';
+  personaId?: string;
+}): Promise<string | null> {
+  const { text, dialectId = 'es-MX', voiceGender = 'male', personaId = '' } = params;
+  const clean = cleanTextForSpeech(text);
+  if (!clean) return null;
+  return `/api/tts?tl=${encodeURIComponent(dialectId)}&gender=${encodeURIComponent(voiceGender)}&persona=${encodeURIComponent(personaId)}&q=${encodeURIComponent(clean)}`;
 }
 
 export async function playNativeAudio(params: {
@@ -388,6 +364,7 @@ export async function playNativeAudio(params: {
   dialectId?: string;
   voiceName?: StudioVoiceName;
   voiceGender?: 'male' | 'female';
+  personaId?: string;
   rate?: number;
   onStart?: () => void;
   onEnd?: () => void;
@@ -397,11 +374,13 @@ export async function playNativeAudio(params: {
     text,
     dialectId = 'es-MX',
     voiceGender = 'male',
+    personaId = '',
     rate = 1.0,
     onStart,
-    onEnd
+    onEnd,
+    onError
   } = params;
-  const validatedVoice = getValidatedVoiceForGender(params.voiceName, voiceGender);
+
   const clean = cleanTextForSpeech(text);
   if (!clean) {
     onEnd?.();
@@ -411,86 +390,29 @@ export async function playNativeAudio(params: {
   stopAllAudio();
   onStart?.();
 
+  const streamUrl = `/api/tts?tl=${encodeURIComponent(dialectId)}&gender=${encodeURIComponent(
+    voiceGender
+  )}&persona=${encodeURIComponent(personaId)}&q=${encodeURIComponent(clean)}`;
+
   try {
-    const dataUri = await generateNativeSpeechAudio({
-      text: clean,
-      dialectId,
-      voiceName: validatedVoice,
-      voiceGender
-    });
-    if (dataUri) {
-      const audio = new Audio(dataUri);
-      currentActiveAudio = audio;
-      audio.playbackRate = Math.max(0.85, Math.min(rate, 1.15));
-      audio.onended = () => {
-        currentActiveAudio = null;
-        onEnd?.();
-      };
-      audio.onerror = () => {
-        currentActiveAudio = null;
-        fallbackTTS(clean, dialectId, voiceGender, rate, onEnd);
-      };
-      await audio.play();
-      return;
-    }
-  } catch {}
-
-  fallbackTTS(clean, dialectId, voiceGender, rate, onEnd);
-}
-
-function fallbackTTS(
-  cleanText: string,
-  dialectId: string,
-  voiceGender: 'male' | 'female',
-  rate: number,
-  onEnd?: () => void
-): void {
-  if (typeof window === 'undefined') {
-    onEnd?.();
-    return;
-  }
-  const targetLang = dialectId.startsWith('ar')
-    ? 'ar-EG'
-    : dialectId.startsWith('ja')
-    ? 'ja-JP'
-    : dialectId.startsWith('fr')
-    ? 'fr-FR'
-    : dialectId.startsWith('pt')
-    ? 'pt-BR'
-    : 'es-MX';
-
-  const voices = 'speechSynthesis' in window ? window.speechSynthesis.getVoices() : [];
-  const matchedVoice = findGenderMatchedOSVoice(dialectId, voices, voiceGender);
-
-  if (matchedVoice && 'speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(cleanText);
-    u.voice = matchedVoice;
-    u.lang = matchedVoice.lang || targetLang;
-    u.rate = rate;
-    // Pitch adjustment so male voices always sound deeper and masculine even on generic OS voices
-    u.pitch = voiceGender === 'male' ? 0.88 : 1.08;
-    u.onend = () => onEnd?.();
-    u.onerror = () => onEnd?.();
-    window.speechSynthesis.speak(u);
-    return;
-  }
-
-  const streamUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(
-    targetLang.split('-')[0]
-  )}&q=${encodeURIComponent(cleanText.slice(0, 200))}`;
-  const audio = new Audio(streamUrl);
-  currentActiveAudio = audio;
-  audio.playbackRate = rate;
-  audio.onended = () => {
+    const audio = new Audio(streamUrl);
+    currentActiveAudio = audio;
+    audio.playbackRate = Math.max(0.8, Math.min(rate, 1.25));
+    audio.onended = () => {
+      currentActiveAudio = null;
+      onEnd?.();
+    };
+    audio.onerror = (err) => {
+      currentActiveAudio = null;
+      onError?.(err);
+      onEnd?.();
+    };
+    await audio.play();
+  } catch (err) {
     currentActiveAudio = null;
+    onError?.(err);
     onEnd?.();
-  };
-  audio.onerror = () => {
-    currentActiveAudio = null;
-    onEnd?.();
-  };
-  audio.play().catch(() => onEnd?.());
+  }
 }
 
 export async function generateAnnouncementCopy(): Promise<string> {
