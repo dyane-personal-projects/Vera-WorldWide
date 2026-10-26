@@ -359,3 +359,7 @@ export function getTransliteration(text: string, dialectId: string): string {
 
   return text;
 }
+
+export function usesNonLatinScript(dialectId: string): boolean {
+  return isNonLatinDialect(dialectId);
+}
