@@ -42,7 +42,7 @@ import { generateTutorReply, getContextualDialectFallback, playNativeAudio, stop
 import { logChatToFirestore, rewardUserSparksAndStreak } from '../firebase';
 import { soundFX } from '../utils/soundEffects';
 import { isNonLatinScript, shouldShowTransliteration, getTransliteration } from '../utils/transliteration';
-import { getTutorPersona, TutorPersona } from '../data/tutorPersonas';
+import { getTutorPersona, pickRandomTutorForDialect, getTutorRosterForDialect, TutorPersona } from '../data/tutorPersonas';
 import { LiveVoiceCallModal } from './LiveVoiceCallModal';
 
 interface TutorChatProps {
