@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import https from 'https';
 import crypto from 'crypto';
 import { createRequire } from 'module';
 
@@ -20,11 +21,6 @@ function generateSecMsGec(): string {
   return crypto.createHash('sha256').update(strToHash, 'ascii').digest('hex').toUpperCase();
 }
 
-/**
- * STRICT GENDER & COUNTRY VOICE LOCKING:
- * Male teachers ALWAYS get a male native voice from their country.
- * Female teachers ALWAYS get a female native voice from their country.
- */
 function resolveNativeHumanVoice(
   tl: string,
   gender: string,
@@ -33,38 +29,30 @@ function resolveNativeHumanVoice(
   const p = (personaId || '').toLowerCase();
   const isFemale = (gender || '').toLowerCase() === 'female';
 
-  // Moroccan Darija (ar-MA)
   if (p.includes('badr')) return { voice: 'ar-MA-JamalNeural', lang: 'ar-MA', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('malika')) return { voice: 'ar-MA-MounaNeural', lang: 'ar-MA', rate: '+0%', pitch: '+0Hz' };
   if (p.includes('youssef')) return { voice: 'ar-DZ-IsmaelNeural', lang: 'ar-DZ', rate: '+2%', pitch: '-2Hz' };
-  if (p.includes('zineb')) return { voice: 'ar-TN-ReemNeural', lang: 'ar-TN', rate: '+2%', pitch: '+2Hz' };
+  if (p.includes('zineb')) return { voice: 'ar-TN-ReemNeural', lang: 'ar-TN', rate: '+2%', pitch: '+3Hz' };
 
-  // Egyptian Masri (ar-EG)
   if (p.includes('karim')) return { voice: 'ar-EG-ShakirNeural', lang: 'ar-EG', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('nour')) return { voice: 'ar-EG-SalmaNeural', lang: 'ar-EG', rate: '+0%', pitch: '+0Hz' };
   if (p.includes('tarek')) return { voice: 'ar-EG-ShakirNeural', lang: 'ar-EG', rate: '+5%', pitch: '-3Hz' };
 
-  // Mexican Spanish (es-MX)
   if (p.includes('sofia')) return { voice: 'es-MX-DaliaNeural', lang: 'es-MX', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('diego')) return { voice: 'es-MX-JorgeNeural', lang: 'es-MX', rate: '+2%', pitch: '+0Hz' };
 
-  // Colombian Paisa (es-CO)
   if (p.includes('mateo')) return { voice: 'es-CO-GonzaloNeural', lang: 'es-CO', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('valentina')) return { voice: 'es-CO-SalomeNeural', lang: 'es-CO', rate: '+2%', pitch: '+0Hz' };
 
-  // Parisian French (fr-FR)
   if (p.includes('camille')) return { voice: 'fr-FR-DeniseNeural', lang: 'fr-FR', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('lucas_montmartre')) return { voice: 'fr-FR-HenriNeural', lang: 'fr-FR', rate: '+2%', pitch: '+0Hz' };
 
-  // Tokyo Japanese (ja-JP)
   if (p.includes('kenji')) return { voice: 'ja-JP-KeitaNeural', lang: 'ja-JP', rate: '+0%', pitch: '+0Hz' };
   if (p.includes('haruka')) return { voice: 'ja-JP-NanamiNeural', lang: 'ja-JP', rate: '+0%', pitch: '+0Hz' };
 
-  // Brazilian Carioca (pt-BR)
   if (p.includes('lucas_rio')) return { voice: 'pt-BR-AntonioNeural', lang: 'pt-BR', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('gabriela')) return { voice: 'pt-BR-FranciscaNeural', lang: 'pt-BR', rate: '+2%', pitch: '+0Hz' };
 
-  // Strict Dialect + Gender Fallback
   const lang = (tl || 'es-MX').toLowerCase();
   if (lang.startsWith('ar-ma')) return { voice: isFemale ? 'ar-MA-MounaNeural' : 'ar-MA-JamalNeural', lang: 'ar-MA', rate: '+0%', pitch: '+0Hz' };
   if (lang.startsWith('ar')) return { voice: isFemale ? 'ar-EG-SalmaNeural' : 'ar-EG-ShakirNeural', lang: 'ar-EG', rate: '+0%', pitch: '+0Hz' };
@@ -73,9 +61,6 @@ function resolveNativeHumanVoice(
   if (lang.startsWith('fr')) return { voice: isFemale ? 'fr-FR-DeniseNeural' : 'fr-FR-HenriNeural', lang: 'fr-FR', rate: '+0%', pitch: '+0Hz' };
   if (lang.startsWith('ja')) return { voice: isFemale ? 'ja-JP-NanamiNeural' : 'ja-JP-KeitaNeural', lang: 'ja-JP', rate: '+0%', pitch: '+0Hz' };
   if (lang.startsWith('pt')) return { voice: isFemale ? 'pt-BR-FranciscaNeural' : 'pt-BR-AntonioNeural', lang: 'pt-BR', rate: '+0%', pitch: '+0Hz' };
-  if (lang.startsWith('it')) return { voice: isFemale ? 'it-IT-ElsaNeural' : 'it-IT-DiegoNeural', lang: 'it-IT', rate: '+0%', pitch: '+0Hz' };
-  if (lang.startsWith('de')) return { voice: isFemale ? 'de-DE-KatjaNeural' : 'de-DE-ConradNeural', lang: 'de-DE', rate: '+0%', pitch: '+0Hz' };
-  if (lang.startsWith('zh')) return { voice: isFemale ? 'zh-CN-XiaoxiaoNeural' : 'zh-CN-YunxiNeural', lang: 'zh-CN', rate: '+0%', pitch: '+0Hz' };
 
   return { voice: isFemale ? 'es-MX-DaliaNeural' : 'es-MX-JorgeNeural', lang: 'es-MX', rate: '+0%', pitch: '+0Hz' };
 }
@@ -116,7 +101,7 @@ function synthesizeNativeNeuralMp3(
     const timeout = setTimeout(() => {
       try { ws.close(); } catch {}
       reject(new Error('Neural TTS timeout'));
-    }, 9000);
+    }, 7000);
 
     ws.on('open', () => {
       const configMsg =
@@ -207,14 +192,41 @@ function veraNeuralTtsProxy() {
             return;
           }
 
-          const mp3Buffer = await synthesizeNativeNeuralMp3(q, voiceInfo);
-          ttsAudioCache.set(cacheKey, mp3Buffer);
-          res.setHeader('Content-Type', 'audio/mpeg');
-          res.setHeader('Cache-Control', 'public, max-age=86400');
-          res.end(mp3Buffer);
-        } catch (err) {
-          console.error('Neural TTS error:', err);
-          res.statusCode = 502;
+          try {
+            const mp3Buffer = await synthesizeNativeNeuralMp3(q, voiceInfo);
+            ttsAudioCache.set(cacheKey, mp3Buffer);
+            res.setHeader('Content-Type', 'audio/mpeg');
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            res.end(mp3Buffer);
+            return;
+          } catch {
+            // Automatic fallback to Google Translate TTS if WebSocket firewall/timeout occurs
+            const langCode = tl.split('-')[0] || 'es';
+            const targetUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(
+              langCode
+            )}&q=${encodeURIComponent(q.slice(0, 200))}`;
+            https
+              .get(
+                targetUrl,
+                {
+                  headers: {
+                    'User-Agent':
+                      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+                  }
+                },
+                (upstream) => {
+                  res.setHeader('Content-Type', 'audio/mpeg');
+                  res.setHeader('Cache-Control', 'public, max-age=86400');
+                  upstream.pipe(res);
+                }
+              )
+              .on('error', () => {
+                res.statusCode = 502;
+                res.end();
+              });
+          }
+        } catch {
+          res.statusCode = 500;
           res.end();
         }
       });
