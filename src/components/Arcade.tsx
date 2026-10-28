@@ -1,6 +1,6 @@
 import React from 'react';
-import { Gamepad2, Users, Trophy, Zap, Flame, Crown, ArrowRight, Play } from 'lucide-react';
-import { DialectTrack, LessonNode, UserProfile } from '../types';
+import { Gamepad2, Zap, Trophy, Crosshair, Users, Sparkles, Flame, ShieldAlert } from 'lucide-react';
+import { UserProfile, DialectTrack, LessonNode } from '../types';
 
 interface ArcadeProps {
   user: UserProfile | null;
@@ -15,135 +15,130 @@ export const Arcade: React.FC<ArcadeProps> = ({
   onStartMatch,
   onOpenStore
 }) => {
-  const isPremium = user?.subscription === 'premium' || user?.role === 'staff';
-
-  const handleStartRapidFire = () => {
-    onStartMatch({
-      id: 'arcade_rapid_fire',
-      title: `Arcade: Rapid Fire (${selectedDialect.dialect})`,
-      focus: 'Answer quickly under 15-second time pressure without breaking colloquial rhythm.',
-      type: 'rapid_fire',
-      cost: 1,
-      rewardSparks: 100,
-      status: 'unlocked',
-      persona: 'Speed Match Referee'
-    });
-  };
-
-  const handleStartDebate = () => {
-    if (!isPremium) {
-      onOpenStore();
-      return;
-    }
-    onStartMatch({
-      id: 'arcade_debate',
-      title: `1v1 Street Debate (${selectedDialect.dialect})`,
-      focus: 'Defend your perspective against an argumentative local dialect master.',
-      type: 'boss',
-      cost: 2,
-      rewardSparks: 250,
-      status: 'unlocked',
-      persona: 'Fiery Street Debater'
-    });
-  };
+  const isUnlimited =
+    user?.subscription === 'premium' ||
+    user?.subscription === 'unlimited' ||
+    user?.role === 'staff';
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 text-slate-100 font-sans p-6 md:p-12 max-w-5xl mx-auto w-full space-y-12">
-      <div className="text-center max-w-2xl mx-auto space-y-4">
-        <div className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-500 shadow-xl shadow-rose-500/10">
-          <Gamepad2 size={36} />
-        </div>
-        <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">
-          Vera Arcade Arena
-        </h1>
-        <p className="text-slate-400 text-sm md:text-base leading-relaxed">
-          High-velocity conversational reflex testing. Put your conversational muscle memory
-          to the test under timer constraints in <strong>{selectedDialect.dialect}</strong>.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Rapid Fire Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 flex flex-col justify-between hover:border-rose-500/50 transition-all shadow-xl group">
+    <div className="flex-1 overflow-y-auto p-6 bg-slate-950 text-slate-100">
+      <div className="max-w-5xl mx-auto space-y-8 pb-16">
+        <header className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-800">
           <div>
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-                Speed Drill
-              </span>
-              <span className="text-xs font-mono text-amber-400 font-bold flex items-center gap-1">
-                <Flame size={14} /> +100 Sparks
-              </span>
-            </div>
-
-            <h3 className="text-2xl font-black text-white mb-2 group-hover:text-rose-400 transition-colors">
-              Rapid Fire Mode
-            </h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-6">
-              Vera fires quick-fire questions at street speed. You must reply immediately without hesitation or breaking native syntax.
+            <h1 className="text-2xl sm:text-3xl font-black text-white flex items-center gap-2.5">
+              <Gamepad2 className="text-cyan-400" />
+              <span>{selectedDialect.flag} {selectedDialect.dialect} Arcade Arena</span>
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">
+              High-speed street reflex drills, 1v1 neighborhood debates, and Boss challenges.
             </p>
           </div>
-
-          <button
-            onClick={handleStartRapidFire}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white font-bold text-xs uppercase font-mono tracking-wider transition-all shadow-lg shadow-rose-600/25 flex items-center justify-center gap-2"
-          >
-            <Play size={16} fill="currentColor" />
-            <span>Launch Rapid Match (1 Zap)</span>
-          </button>
-        </div>
-
-        {/* 1v1 Debate Card */}
-        <div
-          className={`bg-slate-900 border rounded-3xl p-8 flex flex-col justify-between transition-all shadow-xl relative overflow-hidden ${
-            isPremium ? 'border-indigo-500/50 hover:border-indigo-400' : 'border-slate-800/80'
-          }`}
-        >
-          {!isPremium && (
-            <div className="absolute top-0 right-0 bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-[10px] font-mono font-bold uppercase tracking-widest px-4 py-1 rounded-bl-2xl">
-              Premium Tier
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onOpenStore}
+              className="px-4 py-2 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 font-black text-xs flex items-center gap-2 cursor-pointer"
+            >
+              <Sparkles size={15} /> {user?.sparks || 150} Sparks
+            </button>
+            <div className="px-4 py-2 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-black text-xs flex items-center gap-2">
+              <Zap size={15} /> {isUnlimited ? '∞ Zaps' : `${user?.energy ?? 5} Zaps`}
             </div>
-          )}
+          </div>
+        </header>
 
-          <div>
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
-                Competitive Arena
+        <div className="grid md:grid-cols-3 gap-6">
+          {/* Mode 1: Rapid Fire Survival */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-cyan-500/50 transition-all">
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-4">
+                <Crosshair size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
+                Reflex & Listening Speed
               </span>
-              <span className="text-xs font-mono text-amber-400 font-bold flex items-center gap-1">
-                <Crown size={14} /> +250 Sparks
-              </span>
+              <h2 className="text-xl font-black text-white mt-1 mb-2">Rapid Fire Survival</h2>
+              <p className="text-xs text-slate-400 leading-relaxed mb-6">
+                Decode real {selectedDialect.dialect} street phrases, audio clips, and word scrambles under pressure.
+              </p>
             </div>
-
-            <h3 className="text-2xl font-black text-white mb-2 flex items-center gap-2">
-              <Users size={24} className="text-indigo-400" />
-              <span>1v1 Dialect Debate</span>
-            </h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-6">
-              Face off against a high-pressure local persona arguing over city culture, gastronomy, or sports.
-              Scored on conviction and colloquial precision.
-            </p>
+            <button
+              onClick={() =>
+                onStartMatch({
+                  id: 'arcade_rapid_fire',
+                  title: `${selectedDialect.dialect} Rapid Fire Drill`,
+                  focus: 'High-Speed Street Reflexes',
+                  type: 'rapid_fire',
+                  cost: 2,
+                  status: 'unlocked'
+                })
+              }
+              className="w-full py-3.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20"
+            >
+              <Zap size={15} /> Launch Rapid Fire (2 Zaps)
+            </button>
           </div>
 
-          <button
-            onClick={handleStartDebate}
-            className={`w-full py-4 rounded-2xl font-bold text-xs uppercase font-mono tracking-wider transition-all shadow-lg flex items-center justify-center gap-2 ${
-              isPremium
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-600/25'
-                : 'bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30'
-            }`}
-          >
-            {isPremium ? (
-              <>
-                <Play size={16} fill="currentColor" />
-                <span>Enter Debate Ring (2 Zaps)</span>
-              </>
-            ) : (
-              <>
-                <Crown size={16} />
-                <span>Unlock with Premium Immersion</span>
-              </>
-            )}
-          </button>
+          {/* Mode 2: 1v1 Street Debate */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-rose-500/50 transition-all">
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-4">
+                <Users size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-rose-400">
+                1v1 Cultural Duel
+              </span>
+              <h2 className="text-xl font-black text-white mt-1 mb-2">Vocab Clash Debate</h2>
+              <p className="text-xs text-slate-400 leading-relaxed mb-6">
+                Go head-to-head in a lively {selectedDialect.dialect} street food & culture debate. Win +60 Sparks!
+              </p>
+            </div>
+            <button
+              onClick={() =>
+                onStartMatch({
+                  id: 'arcade_debate',
+                  title: `${selectedDialect.dialect} 1v1 Street Debate`,
+                  focus: 'Cultural Wit & Persuasion',
+                  type: 'boss',
+                  cost: 3,
+                  status: 'unlocked'
+                })
+              }
+              className="w-full py-3.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-rose-500/20"
+            >
+              <Trophy size={15} /> Enter 1v1 Arena (3 Zaps)
+            </button>
+          </div>
+
+          {/* Mode 3: Boss Rematch Gauntlet */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-amber-500/50 transition-all">
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4">
+                <ShieldAlert size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                High-Stakes Negotiation
+              </span>
+              <h2 className="text-xl font-black text-white mt-1 mb-2">Souk & Transit Gauntlet</h2>
+              <p className="text-xs text-slate-400 leading-relaxed mb-6">
+                Test your composure against the Transit Inspector and Master Artisan in pure {selectedDialect.dialect}.
+              </p>
+            </div>
+            <button
+              onClick={() =>
+                onStartMatch({
+                  id: 'b1',
+                  title: `${selectedDialect.dialect} Inspector Boss Rematch`,
+                  focus: 'High-Stakes Roleplay',
+                  type: 'boss',
+                  cost: 3,
+                  status: 'unlocked'
+                })
+              }
+              className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20"
+            >
+              <Flame size={15} /> Fight Boss Gauntlet (3 Zaps)
+            </button>
+          </div>
         </div>
       </div>
     </div>
