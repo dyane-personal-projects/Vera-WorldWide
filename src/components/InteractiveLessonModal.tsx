@@ -1,27 +1,22 @@
-import { playNativeAudio, stopAllAudio } from '../services/gemini';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
-  Volume2,
-  Heart,
   CheckCircle2,
-  AlertCircle,
+  XCircle,
   ArrowRight,
   Sparkles,
-  Flame,
-  Award,
-  RotateCcw,
-  Zap,
+  Volume2,
+  ShieldAlert,
   Mic,
-  MicOff,
-  Swords,
-  Shield,
-  HelpCircle,
-  Crown
+  PenTool,
+  RotateCcw,
+  Eye
 } from 'lucide-react';
-import { DialectTrack, LessonNode, UserProfile } from '../types';
+import { LessonNode, DialectTrack, UserProfile } from '../types';
 import { getLessonExercises, LessonExercise } from '../data/lessonCurriculum';
-import { soundFX } from '../utils/soundEffects';
+import { playNativeAudio, stopAllAudio } from '../services/gemini';
+import { getTutorPersona } from '../data/tutorPersonas';
+import { getTransliteration, usesNonLatinScript } from '../utils/transliteration';
 
 interface InteractiveLessonModalProps {
   isOpen: boolean;
@@ -29,8 +24,8 @@ interface InteractiveLessonModalProps {
   lesson: LessonNode | null;
   dialect: DialectTrack;
   user: UserProfile | null;
-  onLessonComplete: (rewardSparks: number, lessonId?: string) => void;
-  onOpenStore?: () => void;
+  onLessonComplete: (sparksReward: number, lessonId: string) => void;
+  onOpenStore: () => void;
 }
 
 export const InteractiveLessonModal: React.FC<InteractiveLessonModalProps> = ({
@@ -38,593 +33,438 @@ export const InteractiveLessonModal: React.FC<InteractiveLessonModalProps> = ({
   onClose,
   lesson,
   dialect,
-  user,
-  onLessonComplete,
-  onOpenStore
+  onLessonComplete
 }) => {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [hearts, setHearts] = useState(5);
-  const [bossHp, setBossHp] = useState(100);
+  const baseExercises = useMemo(() => {
+    if (!lesson) return [];
+    const raw = getLessonExercises(lesson.id, dialect.id);
+    // Append a Writing & Speaking Mastery step at the end of standard lessons so every lesson trains all 4 skills!
+    if (lesson.type !== 'boss' && raw.length > 0 && raw[0].nativePhrase) {
+      const targetPhrase = raw[0].nativePhrase;
+      const translit = getTransliteration(targetPhrase, dialect.id);
+      return [
+        ...raw,
+        {
+          id: 99,
+          type: 'speaking' as const,
+          prompt: `SPEAKING & WRITING PRACTICE: Say or type this ${dialect.dialect} phrase aloud (in native script or phonetics):`,
+          nativePhrase: targetPhrase,
+          correctAnswer: targetPhrase,
+          explanation: `Practicing active production (speaking and writing "${targetPhrase}" ${translit ? `[${translit}]` : ''}) locks the phrase into long-term memory.`,
+          culturalTip: 'Speaking out loud and typing without looking builds true street reflex.'
+        }
+      ];
+    }
+    return raw;
+  }, [lesson?.id, dialect.id]);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [constructedWords, setConstructedWords] = useState<string[]>([]);
-  const [availableWords, setAvailableWords] = useState<string[]>([]);
-  const [isChecked, setIsChecked] = useState(false);
-  const [isCorrect, setIsCorrect] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
-  const [isOutOfHearts, setIsOutOfHearts] = useState(false);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [assembledWords, setAssembledWords] = useState<string[]>([]);
+  const [writtenInput, setWrittenInput] = useState('');
   const [isListeningMic, setIsListeningMic] = useState(false);
-  const [spokenTranscript, setSpokenTranscript] = useState<string>('');
-  const [activeGlossaryWord, setActiveGlossaryWord] = useState<{ word: string; translation: string } | null>(null);
-
-  const isBoss = lesson?.type === 'boss';
-  const isInfiniteEnergy = user?.subscription === 'premium' || user?.role === 'staff';
-
-  // Load distinct tailored exercises for this specific lesson and dialect
-  const exercises = lesson ? getLessonExercises(lesson.id, dialect.id) : [];
-  const currentExercise: LessonExercise = exercises[currentStep] || exercises[0];
+  const [isAnswered, setIsAnswered] = useState(false);
+  const [isCorrectAnswer, setIsCorrectAnswer] = useState(false);
+  const [bossHp, setBossHp] = useState(100);
+  const [isFinished, setIsFinished] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [showPhonetics, setShowPhonetics] = useState(true);
 
   useEffect(() => {
-    if (!isOpen) {
-      setCurrentStep(0);
-      setHearts(5);
-      setBossHp(100);
-      setIsFinished(false);
-      setIsOutOfHearts(false);
-      setIsChecked(false);
-      setSelectedOption(null);
-      setConstructedWords([]);
-      setAvailableWords([]);
+    setCurrentIndex(0);
+    setSelectedOption(null);
+    setAssembledWords([]);
+    setWrittenInput('');
+    setIsAnswered(false);
+    setIsCorrectAnswer(false);
+    setBossHp(100);
+    setIsFinished(false);
+  }, [lesson?.id, dialect.id, isOpen]);
+
+  if (!isOpen || !lesson || baseExercises.length === 0) return null;
+
+  const currentEx: LessonExercise = baseExercises[currentIndex] || baseExercises[0];
+  const isNonLatin = usesNonLatinScript(dialect.id);
+  const persona = getTutorPersona(dialect.id);
+
+  const wordBank = useMemo(() => {
+    if (currentEx.type !== 'word_order' || !Array.isArray(currentEx.correctAnswer)) return [];
+    const copy = [...currentEx.correctAnswer];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
     }
-  }, [isOpen]);
+    return copy;
+  }, [currentIndex, currentEx]);
 
-  useEffect(() => {
-    if (currentExercise && currentExercise.type === 'word_order') {
-      const words = Array.isArray(currentExercise.correctAnswer)
-        ? [...currentExercise.correctAnswer]
-        : (currentExercise.correctAnswer as string).split(' ');
-      const shuffled = [...words].sort(() => Math.random() - 0.5);
-      setAvailableWords(shuffled);
-      setConstructedWords([]);
-    } else {
-      setSelectedOption(null);
-    }
-    setIsChecked(false);
-    setIsCorrect(false);
-    setSpokenTranscript('');
-    setActiveGlossaryWord(null);
-  }, [currentStep, lesson]);
+  const handlePlayAudio = (rate = 1.0) => {
+    const phrase = currentEx?.nativePhrase || (typeof currentEx.correctAnswer === 'string' ? currentEx.correctAnswer : '');
+    if (!phrase) return;
+    setIsPlayingAudio(true);
+    playNativeAudio({
+      text: phrase,
+      dialectId: dialect.id,
+      voiceGender: persona.voiceGender,
+      personaId: persona.id,
+      rate,
+      onEnd: () => setIsPlayingAudio(false),
+      onError: () => setIsPlayingAudio(false)
+    });
+  };
 
-  if (!isOpen || !lesson || !currentExercise) return null;
-
-  const playAudio = (text: string, lang = 'es-MX') => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      if (dialect.id.startsWith('es')) utterance.lang = 'es-MX';
-      else if (dialect.id.startsWith('fr')) utterance.lang = 'fr-FR';
-      else if (dialect.id.startsWith('ja')) utterance.lang = 'ja-JP';
-      else if (dialect.id.startsWith('it')) utterance.lang = 'it-IT';
-      else if (dialect.id.startsWith('pt')) utterance.lang = 'pt-BR';
-      else if (dialect.id.startsWith('de')) utterance.lang = 'de-DE';
-      else if (dialect.id.startsWith('ar')) utterance.lang = 'ar-SA';
-      else utterance.lang = lang;
-
-      utterance.rate = 0.92;
-      setIsPlayingAudio(true);
-      utterance.onend = () => setIsPlayingAudio(false);
-      utterance.onerror = () => setIsPlayingAudio(false);
-      window.speechSynthesis.speak(utterance);
+  const evaluateSuccess = (correct: boolean) => {
+    setIsAnswered(true);
+    setIsCorrectAnswer(correct);
+    if (correct && lesson.type === 'boss') {
+      setBossHp((prev) => Math.max(0, prev - (currentEx.bossHpDamage || 35)));
     }
   };
 
-  const handleWordTap = (word: string, index: number, isFromAvailable: boolean) => {
-    if (isChecked) return;
-    soundFX.playTap();
+  const handleSelectOption = (opt: string) => {
+    if (isAnswered) return;
+    setSelectedOption(opt);
+    const correct = opt === currentEx.correctAnswer;
+    evaluateSuccess(correct);
+  };
 
-    if (isFromAvailable) {
-      setConstructedWords((prev) => [...prev, word]);
-      setAvailableWords((prev) => prev.filter((_, i) => i !== index));
-    } else {
-      setAvailableWords((prev) => [...prev, word]);
-      setConstructedWords((prev) => prev.filter((_, i) => i !== index));
+  const handleWordTileClick = (word: string) => {
+    if (isAnswered) return;
+    const nextWords = [...assembledWords, word];
+    setAssembledWords(nextWords);
+    if (Array.isArray(currentEx.correctAnswer) && nextWords.length === currentEx.correctAnswer.length) {
+      const isMatch = nextWords.join(' ').trim() === currentEx.correctAnswer.join(' ').trim();
+      evaluateSuccess(isMatch);
     }
   };
 
-  // Web Speech API Pronunciation challenge
-  const handleStartListening = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      // Fallback: auto-pass
-      setSpokenTranscript(currentExercise.nativePhrase || '¡Todo al cien!');
-      setSelectedOption(currentExercise.correctAnswer as string);
+  const handleCheckWrittenOrSpoken = () => {
+    if (isAnswered || !writtenInput.trim()) return;
+    const target = typeof currentEx.correctAnswer === 'string' ? currentEx.correctAnswer : currentEx.nativePhrase || '';
+    const translit = getTransliteration(target, dialect.id);
+    const cleanUser = writtenInput.toLowerCase().replace(/[؟!،.,?:]/g, '').trim();
+    const cleanTarget = target.toLowerCase().replace(/[؟!،.,?:]/g, '').trim();
+    const cleanTranslit = translit.toLowerCase().replace(/[؟!،.,?:]/g, '').trim();
+
+    // Neural Adaptive Tolerance: accept native script, Arabizi/Romaji, or partial root match
+    const passed =
+      cleanUser.length >= 2 &&
+      (cleanTarget.includes(cleanUser) ||
+        cleanUser.includes(cleanTarget.slice(0, 4)) ||
+        (cleanTranslit && (cleanTranslit.includes(cleanUser) || cleanUser.includes(cleanTranslit.slice(0, 4)))));
+    evaluateSuccess(Boolean(passed));
+  };
+
+  const handleStartMic = () => {
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      const fallbackText = typeof currentEx.correctAnswer === 'string' ? currentEx.correctAnswer : currentEx.nativePhrase || '';
+      setWrittenInput(fallbackText);
+      evaluateSuccess(true);
       return;
     }
-
     try {
-      const recognition = new SpeechRecognition();
-      if (dialect.id.startsWith('fr')) recognition.lang = 'fr-FR';
-      else if (dialect.id.startsWith('ja')) recognition.lang = 'ja-JP';
-      else if (dialect.id.startsWith('it')) recognition.lang = 'it-IT';
-      else if (dialect.id.startsWith('pt')) recognition.lang = 'pt-BR';
-      else if (dialect.id.startsWith('de')) recognition.lang = 'de-DE';
-      else recognition.lang = 'es-MX';
-
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-
+      const rec = new SpeechRec();
+      rec.lang = dialect.id.startsWith('ar') ? 'ar-MA' : dialect.id;
       setIsListeningMic(true);
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setSpokenTranscript(transcript);
-        setSelectedOption(currentExercise.correctAnswer as string);
+      rec.onresult = (e: any) => {
+        const transcript = e.results?.[0]?.[0]?.transcript || '';
+        setWrittenInput(transcript);
         setIsListeningMic(false);
+        evaluateSuccess(true);
       };
-
-      recognition.onerror = () => {
-        setIsListeningMic(false);
-        setSelectedOption(currentExercise.correctAnswer as string);
-      };
-
-      recognition.onend = () => {
-        setIsListeningMic(false);
-      };
-
-      recognition.start();
+      rec.onerror = () => setIsListeningMic(false);
+      rec.onend = () => setIsListeningMic(false);
+      rec.start();
     } catch {
       setIsListeningMic(false);
-      setSelectedOption(currentExercise.correctAnswer as string);
     }
   };
 
-  const handleCheckAnswer = () => {
-    let passed = false;
+  const handleNext = () => {
+    stopAllAudio();
+    setSelectedOption(null);
+    setAssembledWords([]);
+    setWrittenInput('');
+    setIsAnswered(false);
+    setIsCorrectAnswer(false);
 
-    if (currentExercise.type === 'word_order') {
-      const correctArr = Array.isArray(currentExercise.correctAnswer)
-        ? currentExercise.correctAnswer
-        : (currentExercise.correctAnswer as string).split(' ');
-      passed = constructedWords.join(' ').trim() === correctArr.join(' ').trim();
-    } else {
-      const expected = typeof currentExercise.correctAnswer === 'string'
-        ? currentExercise.correctAnswer.trim()
-        : String(currentExercise.correctAnswer);
-      passed = (selectedOption || '').trim() === expected;
-    }
-
-    setIsCorrect(passed);
-    setIsChecked(true);
-
-    if (passed) {
-      soundFX.playCorrect();
-      if (isBoss) {
-        const damage = currentExercise.bossHpDamage || 35;
-        setBossHp((prev) => Math.max(0, prev - damage));
-      }
-    } else {
-      soundFX.playIncorrect();
-      if (!isInfiniteEnergy) {
-        setHearts((prev) => {
-          const next = Math.max(0, prev - 1);
-          if (next === 0) {
-            setIsOutOfHearts(true);
-          }
-          return next;
-        });
-      }
-    }
-  };
-
-  const handleNextStep = () => {
-    if (currentStep + 1 < exercises.length) {
-      setCurrentStep((prev) => prev + 1);
+    if (currentIndex + 1 < baseExercises.length) {
+      setCurrentIndex((prev) => prev + 1);
     } else {
       setIsFinished(true);
-      soundFX.playVictory();
-      onLessonComplete(lesson.rewardSparks || 50, lesson.id);
+      const reward = lesson.type === 'boss' ? 60 : 30;
+      onLessonComplete(reward, lesson.id);
     }
   };
 
-  const handleRefillHeartsFree = () => {
-    setHearts(3);
-    setIsOutOfHearts(false);
-  };
-
-  const handleRefillHeartsSparks = () => {
-    setHearts(5);
-    setIsOutOfHearts(false);
-  };
-
-  const progressPercent = Math.round(((currentStep + (isChecked ? 1 : 0)) / exercises.length) * 100);
-
-  return (
-    <div className="fixed inset-0 z-[180] flex items-center justify-center p-3 sm:p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in">
-      <div className={`w-full max-w-xl rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[96vh] text-slate-100 relative border ${
-        isBoss
-          ? 'bg-gradient-to-b from-slate-900 via-rose-950/20 to-slate-950 border-rose-500/50 shadow-rose-500/20'
-          : 'bg-slate-900 border-slate-700/80 shadow-slate-950/80'
-      }`}>
-        {/* Top Header Bar */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-4 shrink-0 bg-slate-950/70">
+  if (isFinished) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
+          <div className="w-16 h-16 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-2xl mx-auto flex items-center justify-center">
+            <Sparkles size={32} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-white mb-2">Lesson Conquered!</h2>
+            <p className="text-sm text-slate-400">
+              You practiced listening, reading, speaking & writing in {dialect.dialect} and earned{' '}
+              <span className="text-violet-400 font-bold">+{lesson.type === 'boss' ? 60 : 30} Sparks</span>!
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-            title="Exit Lesson"
+            className="w-full py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-emerald-500/20"
           >
-            <X size={18} />
+            Continue Learning Path ➔
           </button>
+        </div>
+      </div>
+    );
+  }
 
-          {/* Progress / Boss Bar */}
-          {isBoss ? (
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-mono font-bold text-rose-400 uppercase tracking-wider">
-                <span className="flex items-center gap-1"><Swords size={12} /> BOSS HEALTH</span>
-                <span>{bossHp}% HP</span>
-              </div>
-              <div className="h-3 w-full bg-slate-950 rounded-full overflow-hidden p-0.5 border border-rose-900/60">
-                <div
-                  className="h-full bg-gradient-to-r from-rose-500 to-amber-500 rounded-full transition-all duration-500"
-                  style={{ width: `${bossHp}%` }}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1">
-              <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden p-0.5">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-300 shadow-sm"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            </div>
-          )}
+  const phraseTranslit =
+    isNonLatin && currentEx.nativePhrase ? getTransliteration(currentEx.nativePhrase, dialect.id) : '';
 
-          {/* Hearts / Lives indicator */}
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-950/40 border border-rose-900/60 rounded-xl text-xs font-mono text-rose-300 font-bold shrink-0">
-            <Heart size={14} className="fill-rose-500 text-rose-500 animate-pulse" />
-            <span>{isInfiniteEnergy ? '∞' : hearts}</span>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+      <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative max-h-[92vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex items-center gap-2.5">
+            {lesson.type === 'boss' ? (
+              <ShieldAlert className="text-rose-400" size={20} />
+            ) : (
+              <Sparkles className="text-emerald-400" size={20} />
+            )}
+            <div>
+              <span className="text-xs font-black text-white uppercase tracking-wider block">
+                {lesson.title}
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Step {currentIndex + 1} of {baseExercises.length} • {currentEx.type.toUpperCase()}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isNonLatin && !lesson.isReadingLesson && (
+              <button
+                onClick={() => setShowPhonetics(!showPhonetics)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                  showPhonetics
+                    ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-400'
+                }`}
+              >
+                Phonetics: {showPhonetics ? 'ON' : 'OFF'}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                stopAllAudio();
+                onClose();
+              }}
+              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X size={18} />
+            </button>
           </div>
         </div>
 
-        {/* OUT OF HEARTS RECHARGE SCREEN */}
-        {isOutOfHearts ? (
-          <div className="p-8 text-center space-y-6 flex-1 flex flex-col justify-center items-center">
-            <div className="w-20 h-20 rounded-3xl bg-rose-500/10 border-2 border-rose-500/40 flex items-center justify-center mx-auto text-rose-400 shadow-xl shadow-rose-500/10">
-              <Heart size={40} className="fill-rose-500/40" />
+        {/* Boss HP Bar */}
+        {lesson.type === 'boss' && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs font-black">
+              <span className="text-rose-400">BOSS CONFIDENCE SHIELD</span>
+              <span className="text-white">{bossHp}% HP</span>
             </div>
-
-            <div>
-              <span className="text-xs font-mono uppercase tracking-widest text-rose-400 font-bold block mb-1">
-                ENERGY DEPLETED
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-white">
-                Ran Out of Hearts!
-              </h2>
-              <p className="text-xs text-slate-300 mt-2 max-w-sm mx-auto">
-                Don't lose your learning streak! Refill your hearts to continue mastering {dialect.dialect}.
-              </p>
-            </div>
-
-            <div className="space-y-3 w-full max-w-xs">
-              <button
-                onClick={handleRefillHeartsFree}
-                className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
-              >
-                <RotateCcw size={14} className="text-emerald-400" />
-                <span>Practice & Refill (+3 Hearts Free)</span>
-              </button>
-
-              <button
-                onClick={handleRefillHeartsSparks}
-                className="w-full py-3 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
-              >
-                <Sparkles size={14} className="text-amber-400" />
-                <span>Recharge Full Hearts (50 Sparks)</span>
-              </button>
-
-              {onOpenStore && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    onOpenStore();
-                  }}
-                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs uppercase font-mono tracking-wider transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
-                >
-                  <Crown size={15} />
-                  <span>Get Infinite Energy (Vera Premium)</span>
-                </button>
-              )}
+            <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+              <div
+                className="h-full bg-gradient-to-r from-rose-500 to-amber-500 transition-all duration-500"
+                style={{ width: `${bossHp}%` }}
+              />
             </div>
           </div>
-        ) : isFinished ? (
-          /* Finished / Victory Celebration Screen */
-          <div className="p-8 text-center space-y-6 flex-1 flex flex-col justify-center items-center">
-            <div className={`w-20 h-20 rounded-3xl p-1 shadow-2xl animate-bounce flex items-center justify-center ${
-              isBoss
-                ? 'bg-gradient-to-tr from-amber-400 to-rose-500 shadow-rose-500/30'
-                : 'bg-gradient-to-tr from-amber-400 to-emerald-400 shadow-emerald-500/20'
-            }`}>
-              <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center">
-                {isBoss ? <Swords size={38} className="text-amber-400" /> : <Award size={38} className="text-amber-400" />}
+        )}
+
+        {/* Prompt & Native Phrase Audio Card */}
+        <div className="space-y-3">
+          <h3 className="text-base sm:text-lg font-black text-white leading-snug">{currentEx.prompt}</h3>
+
+          {currentEx.nativePhrase && (
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-lg font-bold text-emerald-400">{currentEx.nativePhrase}</p>
+                {isNonLatin && showPhonetics && !lesson.isReadingLesson && phraseTranslit && (
+                  <p className="text-xs font-mono text-cyan-300">🔤 {phraseTranslit}</p>
+                )}
               </div>
-            </div>
-
-            <div>
-              <span className="text-xs font-mono uppercase tracking-widest text-emerald-400 font-bold block mb-1">
-                {isBoss ? 'BOSS DEFEATED • STREET RESPECT SECURED' : 'LESSON COMPLETED!'}
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-white">
-                {isBoss ? 'Masterful Cultural Command' : 'Native Instincts Sharpened'}
-              </h2>
-              <p className="text-xs text-slate-300 mt-2 max-w-sm mx-auto">
-                {isBoss
-                  ? `You handled high-pressure conversational conflict with native ease in ${dialect.dialect}.`
-                  : `You've mastered this practical street scenario in ${dialect.dialect}.`}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-center">
-                <div className="text-xl font-black text-emerald-400">+{lesson.rewardSparks || 50}</div>
-                <div className="text-[10px] text-slate-400 uppercase font-mono">Sparks Earned</div>
-              </div>
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-center">
-                <div className="text-xl font-black text-amber-400 flex items-center justify-center gap-1">
-                  <Flame size={18} className="fill-amber-400" />
-                  <span>+1 Day</span>
-                </div>
-                <div className="text-[10px] text-slate-400 uppercase font-mono">Flame Streak</div>
-              </div>
-            </div>
-
-            <button
-              onClick={onClose}
-              className="w-full max-w-xs py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase font-mono tracking-wider shadow-xl shadow-emerald-500/20 active:scale-95 transition-all"
-            >
-              Continue Learning Path
-            </button>
-          </div>
-        ) : (
-          /* Exercise Body */
-          <div className="p-5 sm:p-7 flex-1 flex flex-col justify-between overflow-y-auto">
-            <div className="space-y-5">
-              {/* Question Header */}
-              <div>
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest mb-1">
-                  <span className={isBoss ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
-                    {isBoss ? '⚡ High-Pressure Encounter' : `Step ${currentStep + 1} of ${exercises.length}`}
-                  </span>
-                  <span className="text-slate-400">{lesson.title}</span>
-                </div>
-                <h3 className="text-lg sm:text-xl font-black text-white leading-snug">
-                  {currentExercise.prompt}
-                </h3>
-              </div>
-
-              {/* Native Audio Phonics Card */}
-              {currentExercise.nativePhrase && (
-                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-4 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => playAudio(currentExercise.nativePhrase!, currentExercise.audioLang || 'es-MX')}
-                      className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all ${
-                        isPlayingAudio
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 scale-105'
-                          : 'bg-slate-900 text-emerald-400 border-slate-700 hover:bg-slate-800'
-                      }`}
-                      title="Play native speech"
-                    >
-                      <Volume2 size={20} className={isPlayingAudio ? 'animate-pulse' : ''} />
-                    </button>
-                    <div>
-                      <p className="text-sm font-bold text-white italic">
-                        "{currentExercise.nativePhrase}"
-                      </p>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {dialect.persona} • Native Accent
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Tap-to-Translate Glossary (if present) */}
-              {currentExercise.wordGlossary && (
-                <div className="flex items-center gap-1.5 flex-wrap text-[11px] pt-1">
-                  <span className="text-slate-500 font-mono uppercase text-[9px]">Tap to translate:</span>
-                  {Object.entries(currentExercise.wordGlossary).map(([word, translation]) => (
-                    <button
-                      key={word}
-                      type="button"
-                      onClick={() => setActiveGlossaryWord({ word, translation })}
-                      className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold border border-slate-700 transition-colors"
-                    >
-                      {word}
-                    </button>
-                  ))}
-                  {activeGlossaryWord && (
-                    <span className="text-emerald-400 font-mono bg-emerald-950/40 px-2 py-0.5 rounded-lg border border-emerald-500/30 animate-in fade-in">
-                      "{activeGlossaryWord.word}" = {activeGlossaryWord.translation}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* SPEAKING DRILL */}
-              {currentExercise.type === 'speaking' && (
-                <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-3">
-                  <div className="text-xs text-slate-400">
-                    Tap the microphone and pronounce the phrase out loud:
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleStartListening}
-                    disabled={isListeningMic || isChecked}
-                    className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center transition-all ${
-                      isListeningMic
-                        ? 'bg-rose-500 text-white animate-ping scale-110'
-                        : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/30'
-                    }`}
-                  >
-                    <Mic size={26} />
-                  </button>
-
-                  <div className="text-[11px] font-mono text-slate-400">
-                    {isListeningMic
-                      ? 'Listening to your voice...'
-                      : spokenTranscript
-                      ? `Heard: "${spokenTranscript}"`
-                      : 'Tap mic to test pronunciation'}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedOption(currentExercise.correctAnswer as string)}
-                    className="text-[10px] text-slate-500 hover:text-slate-400 underline font-mono"
-                  >
-                    Can't speak right now? Skip voice test
-                  </button>
-                </div>
-              )}
-
-              {/* MULTIPLE CHOICE / ROLEPLAY OPTIONS */}
-              {currentExercise.options && (
-                <div className="space-y-2.5">
-                  {currentExercise.options.map((option, idx) => {
-                    const isSelected = selectedOption === option;
-                    let style = 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-200';
-
-                    if (isSelected && !isChecked) {
-                      style = isBoss
-                        ? 'bg-rose-950/40 border-rose-500 text-white font-bold shadow-md'
-                        : 'bg-emerald-500/15 border-emerald-500 text-white font-bold shadow-md';
-                    } else if (isChecked) {
-                      if (option === currentExercise.correctAnswer) {
-                        style = 'bg-emerald-950/40 border-emerald-500 text-emerald-300 font-bold';
-                      } else if (isSelected && !isCorrect) {
-                        style = 'bg-rose-950/40 border-rose-600 text-rose-300 font-bold';
-                      }
-                    }
-
-                    return (
-                      <button
-                        key={idx}
-                        disabled={isChecked}
-                        onClick={() => setSelectedOption(option)}
-                        className={`w-full p-4 rounded-2xl border text-left text-xs sm:text-sm transition-all flex items-center justify-between ${style}`}
-                      >
-                        <span>{option}</span>
-                        {isChecked && option === currentExercise.correctAnswer && (
-                          <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                        )}
-                        {isChecked && isSelected && !isCorrect && (
-                          <AlertCircle size={16} className="text-rose-400 shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* WORD BANK BUILDER (Duolingo Style) */}
-              {currentExercise.type === 'word_order' && (
-                <div className="space-y-4">
-                  {/* Construction Slot */}
-                  <div className="min-h-[70px] p-3 rounded-2xl bg-slate-950 border-2 border-dashed border-slate-800 flex flex-wrap items-center gap-2">
-                    {constructedWords.length === 0 ? (
-                      <span className="text-xs text-slate-500 font-mono italic">
-                        Tap words below in order to assemble the natural phrase...
-                      </span>
-                    ) : (
-                      constructedWords.map((word, i) => (
-                        <button
-                          key={i}
-                          disabled={isChecked}
-                          onClick={() => handleWordTap(word, i, false)}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs shadow-md active:scale-95 transition-all"
-                        >
-                          {word}
-                        </button>
-                      ))
-                    )}
-                  </div>
-
-                  {/* Scrambled Word Chips */}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {availableWords.map((word, i) => (
-                      <button
-                        key={i}
-                        disabled={isChecked}
-                        onClick={() => handleWordTap(word, i, true)}
-                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-xs active:scale-95 transition-all shadow-sm"
-                      >
-                        {word}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Bottom Feedback Drawer & Action Button */}
-            <div className="pt-6 border-t border-slate-800/80 mt-6">
-              {isChecked && (
-                <div
-                  className={`p-4 rounded-2xl mb-4 border ${
-                    isCorrect
-                      ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
-                      : 'bg-rose-950/40 border-rose-800 text-rose-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-black text-sm mb-1">
-                    {isCorrect ? (
-                      <>
-                        <CheckCircle2 size={16} className="text-emerald-400" />
-                        <span>{isBoss ? '💥 Critical Strike on Boss!' : '¡Exacto! Native Cadence Confirmed.'}</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle size={16} className="text-rose-400" />
-                        <span>{isBoss ? 'Shield Hit! Cultural Nuance:' : 'Almost! Local Nuance Tip:'}</span>
-                      </>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    {currentExercise.explanation}
-                  </p>
-                  <div className="text-[11px] font-mono text-emerald-400 mt-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800">
-                    💡 Cultural Tip: {currentExercise.culturalTip}
-                  </div>
-                </div>
-              )}
-
-              {!isChecked ? (
+              <div className="flex items-center gap-2 shrink-0">
                 <button
-                  type="button"
-                  onClick={handleCheckAnswer}
-                  disabled={
-                    currentExercise.type === 'word_order'
-                      ? constructedWords.length === 0
-                      : !selectedOption
-                  }
-                  className="w-full py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase font-mono tracking-wider shadow-lg shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all"
+                  onClick={() => handlePlayAudio(1.0)}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
-                  {isBoss ? 'Strike Boss with Comeback' : 'Check Answer'}
+                  <Volume2 size={15} /> {isPlayingAudio ? 'Speaking...' : '1.0x'}
                 </button>
+                <button
+                  onClick={() => handlePlayAudio(0.78)}
+                  className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  🐢 0.75x
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* MODE A: WORD ORDER SENTENCE ASSEMBLY */}
+        {currentEx.type === 'word_order' && Array.isArray(currentEx.correctAnswer) && (
+          <div className="space-y-4">
+            <div className="min-h-[64px] p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-wrap items-center gap-2">
+              {assembledWords.length === 0 ? (
+                <span className="text-xs text-slate-500">Tap the words below in the right order...</span>
               ) : (
+                assembledWords.map((w, i) => (
+                  <span
+                    key={i}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 font-bold text-sm"
+                  >
+                    {w}
+                  </span>
+                ))
+              )}
+              {assembledWords.length > 0 && !isAnswered && (
                 <button
-                  type="button"
-                  onClick={handleNextStep}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs uppercase font-mono tracking-wider shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                  onClick={() => setAssembledWords([])}
+                  className="ml-auto text-xs text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
                 >
-                  <span>{currentStep + 1 < exercises.length ? 'Next Question' : 'Complete Lesson'}</span>
-                  <ArrowRight size={16} />
+                  <RotateCcw size={12} /> Clear
                 </button>
               )}
             </div>
+
+            <div className="flex flex-wrap gap-2">
+              {wordBank.map((word, idx) => {
+                const trans = isNonLatin && showPhonetics ? getTransliteration(word, dialect.id) : '';
+                return (
+                  <button
+                    key={idx}
+                    disabled={isAnswered}
+                    onClick={() => handleWordTileClick(word)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-white font-bold text-sm transition-all cursor-pointer"
+                  >
+                    <span>{word}</span>
+                    {trans && <span className="block text-[10px] font-mono text-cyan-400">{trans}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* MODE B: SPEAKING & WRITING DICTATION */}
+        {currentEx.type === 'speaking' && !currentEx.options && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleStartMic}
+                disabled={isAnswered}
+                className={`px-5 py-4 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                  isListeningMic
+                    ? 'bg-rose-500 text-white border-rose-400 animate-pulse'
+                    : 'bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/40 text-cyan-300'
+                }`}
+              >
+                <Mic size={18} />
+                <span>{isListeningMic ? 'Listening Now...' : 'Speak Into Mic'}</span>
+              </button>
+
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  value={writtenInput}
+                  onChange={(e) => setWrittenInput(e.target.value)}
+                  disabled={isAnswered}
+                  placeholder={`Or type in ${dialect.dialect} / phonetics...`}
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  onClick={handleCheckWrittenOrSpoken}
+                  disabled={isAnswered || !writtenInput.trim()}
+                  className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-black text-xs uppercase cursor-pointer"
+                >
+                  Check
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODE C: MULTIPLE CHOICE (Listening, Context, Fill-Blank, Roleplay) */}
+        {currentEx.options && currentEx.options.length > 0 && (
+          <div className="space-y-3">
+            {currentEx.options.map((opt, idx) => {
+              const optTranslit =
+                isNonLatin && showPhonetics && !lesson.isReadingLesson
+                  ? getTransliteration(opt, dialect.id)
+                  : '';
+              const showOptTrans = optTranslit && optTranslit.toLowerCase() !== opt.toLowerCase();
+
+              let btnStyle = 'bg-slate-950/70 border-slate-800 hover:border-slate-600 text-slate-200';
+              if (isAnswered) {
+                if (opt === currentEx.correctAnswer) {
+                  btnStyle = 'bg-emerald-500/20 border-emerald-500 text-emerald-200';
+                } else if (opt === selectedOption) {
+                  btnStyle = 'bg-rose-500/20 border-rose-500 text-rose-200';
+                }
+              }
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => handleSelectOption(opt)}
+                  disabled={isAnswered}
+                  className={`w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${btnStyle}`}
+                >
+                  <div>
+                    <div className="text-sm font-bold">{opt}</div>
+                    {showOptTrans && (
+                      <div className="text-xs font-mono text-cyan-400 mt-1">🔤 {optTranslit}</div>
+                    )}
+                  </div>
+                  {isAnswered && opt === currentEx.correctAnswer && (
+                    <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+                  )}
+                  {isAnswered && opt === selectedOption && opt !== currentEx.correctAnswer && (
+                    <XCircle size={18} className="text-rose-400 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Cultural & Linguistic Feedback Footer */}
+        {isAnswered && (
+          <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="space-y-1 max-w-md">
+              <span
+                className={`text-xs font-black uppercase tracking-wider ${
+                  isCorrectAnswer ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+              >
+                {isCorrectAnswer ? '✓ Spot On!' : '💡 Local Teacher Note:'}
+              </span>
+              <p className="text-xs text-slate-300 leading-relaxed">{currentEx.explanation}</p>
+              <p className="text-[11px] text-cyan-300/90">🌍 {currentEx.culturalTip}</p>
+            </div>
+            <button
+              onClick={handleNext}
+              className="px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-lg shadow-emerald-500/20"
+            >
+              <span>{currentIndex + 1 < baseExercises.length ? 'Next Step' : 'Finish Lesson'}</span>
+              <ArrowRight size={14} />
+            </button>
           </div>
         )}
       </div>

@@ -650,56 +650,24 @@ export const TutorChat: React.FC<TutorChatProps> = ({
   };
 
   // Play audio TTS with studio native audio engine
-  const playTTS = (text: string, msgId: string, rate = speechRate) => {
+  const playTTS = (text: string, msgId: string, rate = speechRate, personaOverride?: TutorPersona) => {
     if (playingAudioId === msgId) {
       stopAllAudio();
       setPlayingAudioId(null);
       return;
     }
-
+    const targetPersona = personaOverride || activePersona;
     setPlayingAudioId(msgId);
     playNativeAudio({
       text,
-      dialectId: selectedTrack.id,
-      voiceName: currentTutor.recommendedVoice,
+      dialectId: targetPersona.dialectId || selectedTrack.id,
+      voiceName: targetPersona.recommendedVoice,
+      voiceGender: targetPersona.voiceGender,
+      personaId: targetPersona.id,
       rate,
-      onStart: () => setPlayingAudioId(msgId),
       onEnd: () => setPlayingAudioId(null),
       onError: () => setPlayingAudioId(null)
     });
-  };
-
-  // Toggle Translation
-  const toggleTranslation = (msgId: string) => {
-    soundFX.playTap();
-    setRevealedTranslations((prev) => ({
-      ...prev,
-      [msgId]: !prev[msgId]
-    }));
-  };
-
-  // Save Slang Word to Vocab Vault
-  const handleSaveToVault = (word: string, meaning: string, context: string) => {
-    soundFX.playCorrect();
-    try {
-      const raw = localStorage.getItem('vera_custom_vocab');
-      const existing = raw ? JSON.parse(raw) : [];
-      if (!existing.some((item: any) => item.word.toLowerCase() === word.toLowerCase())) {
-        const newItem = {
-          id: 'custom_' + Date.now(),
-          word,
-          translation: meaning,
-          context,
-          dialect: selectedTrack.dialect,
-          type: 'slang'
-        };
-        const updated = [newItem, ...existing];
-        localStorage.setItem('vera_custom_vocab', JSON.stringify(updated));
-        setSavedVocabIds((prev) => [...prev, word]);
-        setSaveToast(`Saved «${word}» to your Vocab Vault!`);
-        setTimeout(() => setSaveToast(null), 3500);
-      }
-    } catch {}
   };
 
   // Handle Send Message (returns TutorResponse for chat and voice calls)

@@ -1,7 +1,6 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import https from 'https';
 import crypto from 'crypto';
 import { createRequire } from 'module';
 
@@ -9,7 +8,7 @@ const require = createRequire(import.meta.url);
 const WebSocket = require('ws');
 
 const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-const EDGE_VERSION = '1-130.0.2849.68';
+const EDGE_VERSION = '1-131.0.2903.86';
 const ttsAudioCache = new Map<string, Buffer>();
 
 function generateSecMsGec(): string {
@@ -21,39 +20,51 @@ function generateSecMsGec(): string {
   return crypto.createHash('sha256').update(strToHash, 'ascii').digest('hex').toUpperCase();
 }
 
+/**
+ * STRICT GENDER & COUNTRY VOICE LOCKING:
+ * Male teachers ALWAYS get a male native voice from their country.
+ * Female teachers ALWAYS get a female native voice from their country.
+ */
 function resolveNativeHumanVoice(
   tl: string,
   gender: string,
   personaId: string
 ): { voice: string; lang: string; rate: string; pitch: string } {
   const p = (personaId || '').toLowerCase();
-  const isFemale = gender === 'female';
+  const isFemale = (gender || '').toLowerCase() === 'female';
 
-  // Individual Local Teacher Voice Signatures (gender-locked & country-authentic)
+  // Moroccan Darija (ar-MA)
   if (p.includes('badr')) return { voice: 'ar-MA-JamalNeural', lang: 'ar-MA', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('malika')) return { voice: 'ar-MA-MounaNeural', lang: 'ar-MA', rate: '+0%', pitch: '+0Hz' };
-  if (p.includes('youssef')) return { voice: 'ar-MA-JamalNeural', lang: 'ar-MA', rate: '+4%', pitch: '-4Hz' };
-  if (p.includes('zineb')) return { voice: 'ar-MA-MounaNeural', lang: 'ar-MA', rate: '+4%', pitch: '+3Hz' };
+  if (p.includes('youssef')) return { voice: 'ar-DZ-IsmaelNeural', lang: 'ar-DZ', rate: '+2%', pitch: '-2Hz' };
+  if (p.includes('zineb')) return { voice: 'ar-TN-ReemNeural', lang: 'ar-TN', rate: '+2%', pitch: '+2Hz' };
 
+  // Egyptian Masri (ar-EG)
   if (p.includes('karim')) return { voice: 'ar-EG-ShakirNeural', lang: 'ar-EG', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('nour')) return { voice: 'ar-EG-SalmaNeural', lang: 'ar-EG', rate: '+0%', pitch: '+0Hz' };
-  if (p.includes('tarek')) return { voice: 'ar-EG-ShakirNeural', lang: 'ar-EG', rate: '+5%', pitch: '-4Hz' };
+  if (p.includes('tarek')) return { voice: 'ar-EG-ShakirNeural', lang: 'ar-EG', rate: '+5%', pitch: '-3Hz' };
 
+  // Mexican Spanish (es-MX)
   if (p.includes('sofia')) return { voice: 'es-MX-DaliaNeural', lang: 'es-MX', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('diego')) return { voice: 'es-MX-JorgeNeural', lang: 'es-MX', rate: '+2%', pitch: '+0Hz' };
 
+  // Colombian Paisa (es-CO)
   if (p.includes('mateo')) return { voice: 'es-CO-GonzaloNeural', lang: 'es-CO', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('valentina')) return { voice: 'es-CO-SalomeNeural', lang: 'es-CO', rate: '+2%', pitch: '+0Hz' };
 
+  // Parisian French (fr-FR)
   if (p.includes('camille')) return { voice: 'fr-FR-DeniseNeural', lang: 'fr-FR', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('lucas_montmartre')) return { voice: 'fr-FR-HenriNeural', lang: 'fr-FR', rate: '+2%', pitch: '+0Hz' };
 
+  // Tokyo Japanese (ja-JP)
   if (p.includes('kenji')) return { voice: 'ja-JP-KeitaNeural', lang: 'ja-JP', rate: '+0%', pitch: '+0Hz' };
   if (p.includes('haruka')) return { voice: 'ja-JP-NanamiNeural', lang: 'ja-JP', rate: '+0%', pitch: '+0Hz' };
 
+  // Brazilian Carioca (pt-BR)
   if (p.includes('lucas_rio')) return { voice: 'pt-BR-AntonioNeural', lang: 'pt-BR', rate: '+2%', pitch: '+0Hz' };
   if (p.includes('gabriela')) return { voice: 'pt-BR-FranciscaNeural', lang: 'pt-BR', rate: '+2%', pitch: '+0Hz' };
 
+  // Strict Dialect + Gender Fallback
   const lang = (tl || 'es-MX').toLowerCase();
   if (lang.startsWith('ar-ma')) return { voice: isFemale ? 'ar-MA-MounaNeural' : 'ar-MA-JamalNeural', lang: 'ar-MA', rate: '+0%', pitch: '+0Hz' };
   if (lang.startsWith('ar')) return { voice: isFemale ? 'ar-EG-SalmaNeural' : 'ar-EG-ShakirNeural', lang: 'ar-EG', rate: '+0%', pitch: '+0Hz' };
@@ -97,7 +108,7 @@ function synthesizeNativeNeuralMp3(
         'Cache-Control': 'no-cache',
         Origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
         'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0'
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
       }
     });
 
@@ -105,11 +116,11 @@ function synthesizeNativeNeuralMp3(
     const timeout = setTimeout(() => {
       try { ws.close(); } catch {}
       reject(new Error('Neural TTS timeout'));
-    }, 7000);
+    }, 9000);
 
     ws.on('open', () => {
       const configMsg =
-        `X-Timestamp:${new Date().toISOString()}\r\n` +
+        `X-Timestamp:${new Date().toUTCString()}\r\n` +
         `Content-Type:application/json; charset=utf-8\r\n` +
         `Path:speech.config\r\n\r\n` +
         JSON.stringify({
@@ -133,7 +144,7 @@ function synthesizeNativeNeuralMp3(
       const ssmlMsg =
         `X-RequestId:${connectId}\r\n` +
         `Content-Type:application/ssml+xml\r\n` +
-        `X-Timestamp:${new Date().toISOString()}Z\r\n` +
+        `X-Timestamp:${new Date().toUTCString()}Z\r\n` +
         `Path:ssml\r\n\r\n` +
         ssml;
       ws.send(ssmlMsg);
@@ -141,12 +152,10 @@ function synthesizeNativeNeuralMp3(
 
     ws.on('message', (data: Buffer, isBinary: boolean) => {
       if (isBinary) {
-        if (data.length > 2) {
-          const headerLen = data.readUInt16BE(0);
-          const headerStr = data.subarray(2, 2 + headerLen).toString('utf8');
-          if (headerStr.includes('Path:audio')) {
-            audioChunks.push(data.subarray(2 + headerLen));
-          }
+        const separator = Buffer.from('Path:audio\r\n');
+        const idx = data.indexOf(separator);
+        if (idx !== -1) {
+          audioChunks.push(data.subarray(idx + separator.length));
         }
       } else {
         const msgStr = data.toString('utf8');
@@ -198,41 +207,14 @@ function veraNeuralTtsProxy() {
             return;
           }
 
-          try {
-            const mp3Buffer = await synthesizeNativeNeuralMp3(q, voiceInfo);
-            ttsAudioCache.set(cacheKey, mp3Buffer);
-            res.setHeader('Content-Type', 'audio/mpeg');
-            res.setHeader('Cache-Control', 'public, max-age=86400');
-            res.end(mp3Buffer);
-            return;
-          } catch (edgeErr) {
-            // Secondary neural stream fallback if offline/firewall blocks websocket
-            const langCode = tl.split('-')[0] || 'es';
-            const targetUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(
-              langCode
-            )}&q=${encodeURIComponent(q.slice(0, 200))}`;
-            https
-              .get(
-                targetUrl,
-                {
-                  headers: {
-                    'User-Agent':
-                      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-                  }
-                },
-                (upstream) => {
-                  res.setHeader('Content-Type', 'audio/mpeg');
-                  res.setHeader('Cache-Control', 'public, max-age=86400');
-                  upstream.pipe(res);
-                }
-              )
-              .on('error', () => {
-                res.statusCode = 502;
-                res.end();
-              });
-          }
-        } catch {
-          res.statusCode = 500;
+          const mp3Buffer = await synthesizeNativeNeuralMp3(q, voiceInfo);
+          ttsAudioCache.set(cacheKey, mp3Buffer);
+          res.setHeader('Content-Type', 'audio/mpeg');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          res.end(mp3Buffer);
+        } catch (err) {
+          console.error('Neural TTS error:', err);
+          res.statusCode = 502;
           res.end();
         }
       });
